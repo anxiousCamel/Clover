@@ -1,34 +1,93 @@
-# Dependencies
-node_modules/
+# ═══════════════════════════════════════════════════════════════════════
+# Clover — .gitignore
+# ═══════════════════════════════════════════════════════════════════════
 
-# Build output
+# ── Dependencies ──────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# ── Build output ──────────────────────────────────────────────────────
 dist/
+build/
+out/
 *.tsbuildinfo
 
-# Data (SQLite, LanceDB, local state)
+# ── Runtime data (SQLite, LanceDB, local state) ──────────────────────
 data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.lance/
 
-# Environment
+# ── Tauri ─────────────────────────────────────────────────────────────
+apps/ui/src-tauri/target/
+apps/ui/src-tauri/WixTools/
+apps/ui/src-tauri/Frameworks/
+
+# ── Vite / bundler cache ─────────────────────────────────────────────
+.vite/
+*.local
+
+# ── Environment & secrets ─────────────────────────────────────────────
 .env
 .env.*
+!.env.example
 
-# OS
-Thumbs.db
-Desktop.ini
-.DS_Store
+# ── Logs ──────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# IDE
+# ── Test & coverage ──────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+
+# ── IDE / Editor ──────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# VS Code — keep shared settings, ignore personal
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
-.idea/
+!.vscode/launch.json
 
-# Logs
-*.log
-npm-debug.log*
+# ── OS generated ──────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
-# Tauri build
-apps/ui/src-tauri/target/
-
-# Claude / Kiro local settings
+# ── AI tooling (local settings, not shared) ───────────────────────────
 .claude/
+.kiro/settings/
+.kiro/
+.vscode/
+
+# ── Misc ──────────────────────────────────────────────────────────────
+*.tgz
+*.tar.gz
+*.zip
+.cache/
+.temp/
+.tmp/
