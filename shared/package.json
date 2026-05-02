@@ -1,0 +1,49 @@
+{
+  "name": "@clover/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/types/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.js"
+    },
+    "./protos/generated/index.js": {
+      "types": "./dist/protos/generated/index.d.ts",
+      "default": "./dist/protos/generated/index.js"
+    },
+    "./protos/generated/openclaude.js": {
+      "types": "./dist/protos/generated/openclaude.d.ts",
+      "default": "./dist/protos/generated/openclaude.js"
+    },
+    "./protos/loader.js": {
+      "types": "./dist/protos/loader.d.ts",
+      "default": "./dist/protos/loader.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run"
+  },
+  "peerDependencies": {
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.0"
+  },
+  "peerDependenciesMeta": {
+    "@grpc/grpc-js": {
+      "optional": true
+    },
+    "@grpc/proto-loader": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@grpc/grpc-js": "^1.12.2",
+    "@grpc/proto-loader": "^0.7.13",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}

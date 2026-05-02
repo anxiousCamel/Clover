@@ -1,0 +1,24 @@
+{
+  "name": "clover",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clover Local AI Assistant — desktop-first, no cloud, no Docker",
+  "scripts": {
+    "dev": "pnpm --filter @clover/backend run dev & bash scripts/start-openclaude.sh & pnpm --filter @clover/ui run dev",
+    "cli": "pnpm --filter @clover/backend run cli",
+    "ui": "pnpm --parallel --filter @clover/backend --filter @clover/ui run dev",
+    "build": "pnpm -r run build",
+    "health": "bash scripts/health-check.sh",
+    "typecheck": "tsc --build"
+  },
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "protobufjs"
+    ]
+  }
+}

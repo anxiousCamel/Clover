@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package openclaude;
+
+// ─── Messages ────────────────────────────────────────────
+
+message Message {
+  string role = 1;
+  string content = 2;
+  optional string tool_name = 3;
+  optional string tool_call_id = 4;
+}
+
+message Tool {
+  string name = 1;
+  string description = 2;
+  string input_schema = 3; // JSON-encoded schema
+}
+
+message ToolCall {
+  string id = 1;
+  string name = 2;
+  string arguments = 3; // JSON-encoded arguments
+}
+
+message UsageStats {
+  int32 input_tokens = 1;
+  int32 output_tokens = 2;
+}
+
+// ─── Request / Response ──────────────────────────────────
+
+message CompletionRequest {
+  repeated Message messages = 1;
+  repeated Tool tools = 2;
+  string model = 3;
+  bool stream = 4;
+}
+
+message CompletionChunk {
+  oneof payload {
+    string token = 1;
+    ToolCall tool_call = 2;
+    UsageStats usage = 3;
+  }
+}
+
+message CompletionResponse {
+  Message message = 1;
+  UsageStats usage = 2;
+}
+
+// ─── Service ─────────────────────────────────────────────
+
+service CompletionService {
+  rpc StreamComplete (CompletionRequest) returns (stream CompletionChunk);
+  rpc Complete       (CompletionRequest) returns (CompletionResponse);
+}

@@ -1,0 +1,17 @@
+{
+  "models": [
+    {
+      "name": "qwen2.5-coder:14b",
+      "provider": "ollama",
+      "capabilities": ["chat"],
+      "contextWindow": 32768,
+      "default": true
+    },
+    {
+      "name": "nomic-embed-text",
+      "provider": "ollama",
+      "capabilities": ["embed"],
+      "default": true
+    }
+  ]
+}

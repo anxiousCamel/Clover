@@ -1,0 +1,35 @@
+{
+  "gateway": {
+    "port": 3001,
+    "host": "localhost",
+    "corsOrigin": "http://localhost:1420"
+  },
+  "openclaude": {
+    "host": "localhost",
+    "port": 50051
+  },
+  "ollama": {
+    "host": "http://localhost:11434",
+    "retryAttempts": 3,
+    "retryBackoffMs": 1000
+  },
+  "memory": {
+    "dbPath": "./data/lancedb",
+    "topK": 5,
+    "chunkSize": 512,
+    "chunkOverlap": 50
+  },
+  "vault": {
+    "path": "",
+    "watchDebounceMs": 500
+  },
+  "execGuard": {
+    "timeoutMs": 30000
+  },
+  "confirmation": {
+    "timeoutMs": 60000
+  },
+  "session": {
+    "historyLimit": 20
+  }
+}

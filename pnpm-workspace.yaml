@@ -1,0 +1,6 @@
+packages:
+  - "apps/*"
+  - "shared"
+allowBuilds:
+  esbuild: true
+  protobufjs: true

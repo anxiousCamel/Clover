@@ -1,0 +1,19 @@
+[package]
+name = "clover"
+version = "0.1.0"
+description = "Clover Local AI Assistant"
+authors = []
+license = ""
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1", features = [] }
+
+[dependencies]
+tauri = { version = "1", features = ["fs-read-file", "fs-write-file", "fs-read-dir", "fs-create-dir", "fs-exists", "path-all", "window-close", "window-minimize", "window-maximize", "window-unmaximize", "window-set-title", "window-set-size", "window-set-min-size", "window-set-position", "window-set-fullscreen", "window-set-focus", "window-show", "window-hide"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
