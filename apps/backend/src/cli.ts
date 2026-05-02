@@ -10,6 +10,12 @@
  */
 
 import * as readline from 'node:readline';
+import chalk from 'chalk';
+import boxen from 'boxen';
+import figlet from 'figlet';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import gradient from 'gradient-string';
 import { config } from './config/config.js';
 import { SQLiteStore } from './storage/sqlite.store.js';
 import * as lancedb from './memory/lancedb.adapter.js';
@@ -18,59 +24,95 @@ import * as toolRegistry from './tools/tool-registry.js';
 import * as agentEngine from './agents/agent-engine.js';
 import * as ollamaClient from './ollama/ollama.client.js';
 import * as memoryService from './memory/memory.service.js';
+import * as taskService from './orchestrator/task.service.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 // ---------------------------------------------------------------------------
-// Colors (ANSI)
+// Colors & Styling
 // ---------------------------------------------------------------------------
 
-const CYAN = '\x1b[36m';
-const GREEN = '\x1b[32m';
-const DIM = '\x1b[2m';
-const RESET = '\x1b[0m';
-const BOLD = '\x1b[1m';
+const cloverGradient = gradient(['#22c55e', '#a3e635', '#fde047']); // Green to Lime to Yellow
+const highlight = chalk.hex('#a3e635');
+const dim = chalk.gray;
+
+const CLOVER_RAW = `
+ ██████╗██╗      ██████╗ ██╗   ██╗███████╗██████╗
+██╔════╝██║     ██╔═══██╗██║   ██║██╔════╝██╔══██╗
+██║     ██║     ██║   ██║██║   ██║█████╗  ██████╔╝
+██║     ██║     ██║   ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗
+╚██████╗███████╗╚██████╔╝ ╚████╔╝ ███████╗██║  ██║
+ ╚═════╝╚══════╝ ╚═════╝   ╚═══╝  ╚══════╝╚═╝  ╚═╝
+`.trim();
+
+async function renderBanner() {
+  const title = figlet.textSync('CLOVER', { font: 'ANSI Shadow' });
+
+  console.clear();
+  console.log(cloverGradient(title));
+  console.log(`\n 🍀 ${chalk.white('Any model. Every tool. Zero limits.')} 🍀\n`);
+}
 
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
 async function boot(): Promise<{ sessionId: string }> {
-  console.log(`${CYAN}${BOLD}🍀 Clover CLI${RESET}`);
-  console.log(`${DIM}Booting...${RESET}\n`);
+  await renderBanner();
 
   // SQLite
   const store = new SQLiteStore('./data/clover.db');
   await store.ensureReady();
 
   // LanceDB
+  let lancedbStatus = 'Active';
   try {
     await lancedb.init(config.memory.dbPath);
   } catch {
-    console.log(`${DIM}LanceDB init skipped (non-critical)${RESET}`);
+    lancedbStatus = 'Skipped';
   }
 
-  // Session manager
+  // Session manager & Task service
   sessionManager.init(store);
+  taskService.init(store);
 
   // Tools
   await toolRegistry.loadPlugins();
-  console.log(`${DIM}Tools: ${toolRegistry.listTools().length} plugins${RESET}`);
+  const toolCount = toolRegistry.listTools().length;
 
   // Agents
   await agentEngine.loadAgents();
-  console.log(`${DIM}Agents: ${agentEngine.listAgents().length} loaded${RESET}`);
+  const agentCount = agentEngine.listAgents().length;
 
   // Check Ollama
+  let ollamaStatus = 'Not reachable';
+  let modelInfo = 'N/A';
   try {
     const models = await ollamaClient.listModels();
-    console.log(`${DIM}Ollama: ${models.length} model(s) available${RESET}`);
+    ollamaStatus = 'Active';
+    modelInfo = models.length > 0 ? `Ollama (${models[0].name})` : 'Ollama (No models)';
   } catch {
-    console.log(`${DIM}⚠ Ollama not reachable at ${config.ollama.host}${RESET}`);
+    // keep defaults
   }
 
   // Create session
   const session = sessionManager.createSession(process.cwd());
-  console.log(`${DIM}Session: ${session.id.slice(0, 8)}...${RESET}`);
-  console.log();
+
+  // Render Status Box
+  const statusContent = [
+    `${chalk.white('Clover System:')}  🍀 ${chalk.green('Active')}`,
+    `${chalk.white('Core LLM:')}       ${highlight(modelInfo)}`,
+    `${chalk.white('Backend:')}        ${dim(config.ollama.host)}`,
+  ].join('\n');
+
+  console.log(boxen(statusContent, {
+    padding: 1,
+    margin: { bottom: 1 },
+    borderColor: '#22c55e',
+    borderStyle: 'round',
+  }));
+
+  console.log(chalk.green(`● 🍀 clover Ready ${dim('— type /help to begin')}`));
+  console.log(`${chalk.white('Clover>')} ${highlight('clover-cli v1.0.0')}\n`);
 
   return { sessionId: session.id };
 }
@@ -79,30 +121,142 @@ async function boot(): Promise<{ sessionId: string }> {
 // Chat loop
 // ---------------------------------------------------------------------------
 
-async function chat(sessionId: string, userMessage: string): Promise<string> {
-  // Load history
-  const history = sessionManager.loadHistory(sessionId);
+function findWorkspaceRoot(startPath: string): string {
+  let current = path.resolve(startPath);
+  const root = path.parse(current).root;
+  while (current !== root) {
+    if (
+      existsSync(path.join(current, 'pnpm-workspace.yaml')) ||
+      existsSync(path.join(current, '.git'))
+    ) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+  return startPath;
+}
+
+async function chat(sessionId: string, userMessage: string, rl: readline.Interface): Promise<string> {
+  const workspacePath = findWorkspaceRoot(process.cwd());
 
   // RAG search (best-effort)
-  let memoryChunks: Awaited<ReturnType<typeof memoryService.search>> = [];
+  let memoryChunks: any[] = [];
   try {
     memoryChunks = await memoryService.search(userMessage, 5);
   } catch {
     // skip
   }
 
-  // Build context
-  const contextMessages = sessionManager.buildContextWindow(
+  const messages: Message[] = [
+    ...sessionManager.loadHistory(sessionId),
+    { role: 'user', content: userMessage },
+  ];
+
+  // Map tools to Ollama format
+  const availableTools = toolRegistry.listTools().map(name => {
+    const plugin = toolRegistry.getPlugin(name)!;
+    const schema = zodToJsonSchema(plugin.inputSchema as any) as any;
+    delete schema.$schema;
+    
+    return {
+      type: 'function' as const,
+      function: {
+        name: plugin.name,
+        description: plugin.description,
+        parameters: schema,
+      },
+    };
+  });
+
+  let isStatusActive = false;
+
+  // Dispatch to agent engine
+  const result = await agentEngine.dispatch(
+    {
+      messages,
+      tools: availableTools,
+      model: 'qwen2.5-coder:14b',
+    },
     sessionId,
-    memoryChunks,
-    'You are Clover, a helpful local AI assistant. Answer concisely.',
+    {
+      workspacePath,
+      onConfirmationRequired: async (toolName, args: any) => {
+        isStatusActive = false;
+        readline.cursorTo(process.stdout, 0);
+        readline.clearLine(process.stdout, 0);
+
+        console.log(`\n${chalk.yellow('⚠️  Confirmation Required')}`);
+        console.log(`${dim('Clover wants to use:')} ${chalk.cyan(toolName)}`);
+
+        // Humanize arguments
+        if (toolName === 'write-file' || toolName === 'edit-file' || toolName === 'read-file' || toolName === 'list-files') {
+          const target = args.path || args.directory || '.';
+          console.log(`${dim('Target:')} ${highlight(target)}`);
+          if (args.content) {
+            const preview = args.content.length > 100
+              ? args.content.slice(0, 100).replace(/\n/g, ' ') + '...'
+              : args.content.replace(/\n/g, ' ');
+            console.log(`${dim('Content:')} ${preview}`);
+          }
+        } else if (toolName === 'execute-command') {
+          console.log(`${dim('Command:')} ${chalk.magenta(args.command)}`);
+        } else {
+          console.log(`${dim('Arguments:')} ${JSON.stringify(args, null, 2)}`);
+        }
+
+        console.log(`\n  1. ${chalk.red('no')}  2. ${chalk.green('allow')}  3. ${chalk.blue('other')}\n`);
+
+        return new Promise((resolve) => {
+          rl.resume();
+          rl.question(chalk.yellow('Selection (1/2/3): '), (answer) => {
+            rl.pause();
+            const choice = answer.trim();
+            if (choice === '2') {
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          });
+        });
+      },
+      emit: (type, data: any) => {
+        if (type === 'message:token') {
+          if (isStatusActive && data.token) {
+            readline.cursorTo(process.stdout, 0);
+            readline.clearLine(process.stdout, 0);
+            process.stdout.write(chalk.cyan('clover › '));
+            isStatusActive = false;
+          }
+          process.stdout.write(data.token);
+        } else if (type === 'tool:executing') {
+          isStatusActive = true;
+          readline.cursorTo(process.stdout, 0);
+          readline.clearLine(process.stdout, 0);
+          process.stdout.write(`${chalk.cyan('clover › ')}${dim(data.toolName + '...')}`);
+        } else if (type === 'tool:result') {
+          if (data.success) {
+            // Clear the "toolName..." status and show brief success
+            readline.cursorTo(process.stdout, 0);
+            readline.clearLine(process.stdout, 0);
+            isStatusActive = false;
+          } else {
+            isStatusActive = false;
+            readline.cursorTo(process.stdout, 0);
+            readline.clearLine(process.stdout, 0);
+            const errorMsg = data.error || data.output || 'Unknown error';
+            process.stdout.write(`  ${chalk.red('✗')} ${dim(errorMsg)}\n`);
+          }
+        } else if (type === 'agent:status' && data.status === 'running') {
+          isStatusActive = true;
+          readline.cursorTo(process.stdout, 0);
+          readline.clearLine(process.stdout, 0);
+          process.stdout.write(`${chalk.cyan('clover › ')}${dim('pensando...')}`);
+        }
+      },
+    }
   );
 
-  const messages = [...contextMessages, { role: 'user' as const, content: userMessage }];
-
-  // Call Ollama directly
-  const model = 'qwen2.5-coder:14b';
-  const response = await ollamaClient.chat(messages, model);
+  const response = result.text;
 
   // Save to history
   sessionManager.saveMessage(sessionId, { role: 'user', content: userMessage });
@@ -133,10 +287,10 @@ async function main(): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: `${GREEN}you › ${RESET}`,
+    prompt: highlight('you › '),
   });
 
-  console.log(`${DIM}Type your message. Ctrl+C to exit.${RESET}\n`);
+  console.log(dim('Type your message. Ctrl+C to exit.\n'));
   rl.prompt();
 
   let pendingChat: Promise<void> | null = null;
@@ -149,14 +303,14 @@ async function main(): Promise<void> {
     }
 
     if (input === '/quit' || input === '/exit') {
-      console.log(`\n${DIM}Bye!${RESET}`);
+      console.log(`\n${dim('Bye!')}`);
       process.exit(0);
     }
 
     if (input === '/history') {
       const history = sessionManager.loadHistory(sessionId);
       for (const msg of history) {
-        const prefix = msg.role === 'user' ? `${GREEN}you${RESET}` : `${CYAN}clover${RESET}`;
+        const prefix = msg.role === 'user' ? highlight('you') : chalk.cyan('clover');
         console.log(`${prefix}: ${msg.content.slice(0, 120)}`);
       }
       console.log();
@@ -166,15 +320,16 @@ async function main(): Promise<void> {
 
     // Pause readline while waiting for response
     rl.pause();
-    process.stdout.write(`${CYAN}clover › ${RESET}`);
 
     pendingChat = (async () => {
       try {
-        const response = await chat(sessionId, input);
-        console.log(response);
+        await chat(sessionId, input, rl);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`\x1b[31mError: ${msg}${RESET}`);
+        console.log(`\n${chalk.red('Error:')} ${msg}`);
+        if (msg.includes('Ollama returned HTTP 500')) {
+          console.log(`${chalk.yellow('Tip:')} Ollama is struggling. Try a smaller model (e.g. qwen2.5:7b) or check your VRAM usage.`);
+        }
       }
       console.log();
       if (!closing) {
@@ -192,7 +347,7 @@ async function main(): Promise<void> {
     if (pendingChat) {
       await pendingChat;
     }
-    console.log(`\n${DIM}Bye!${RESET}`);
+    console.log(`\n${dim('Bye!')}`);
     process.exit(0);
   });
 }

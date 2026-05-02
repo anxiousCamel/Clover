@@ -17,6 +17,8 @@ import * as memoryService from '../memory/memory.service.js';
 import * as agentEngine from '../agents/agent-engine.js';
 import type { DispatchOptions, DispatchResult, EmitFn } from '../agents/agent-engine.js';
 import * as toolRegistry from '../tools/tool-registry.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,7 +102,7 @@ export async function handle(
   }
 
   // ── 3. Build CompletionRequest ──────────────────────────
-  const contextMessages = sessionManager.buildContextWindow(
+  const contextMessages = await sessionManager.buildContextWindow(
     sessionId,
     memoryChunks,
     DEFAULT_SYSTEM_PROMPT,
@@ -177,10 +179,13 @@ function buildToolList(): Tool[] {
     const plugin = toolRegistry.getPlugin(name);
     if (!plugin) continue;
 
+    const schema = zodToJsonSchema(plugin.inputSchema as z.ZodSchema) as any;
+    delete schema.$schema;
+    
     tools.push({
       name: plugin.name,
       description: plugin.description,
-      inputSchema: plugin.inputSchema as Record<string, unknown>,
+      inputSchema: schema,
     });
   }
 

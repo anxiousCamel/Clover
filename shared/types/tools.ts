@@ -7,6 +7,20 @@
  * layer.
  */
 
+/** Central registry of tool names to avoid magic strings. */
+export const TOOL_NAMES = {
+  READ_FILE: 'read-file',
+  WRITE_FILE: 'write-file',
+  EDIT_FILE: 'edit-file',
+  DELETE_FILE: 'delete-file',
+  LIST_FILES: 'list-files',
+  EXECUTE_COMMAND: 'execute-command',
+  SEARCH_MEMORY: 'search-memory',
+  SEARCH_ONLINE: 'search-online',
+} as const;
+
+export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];
+
 /** Context provided to every tool execution. */
 export interface ToolContext {
   workspacePath: string;

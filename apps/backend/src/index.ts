@@ -32,6 +32,7 @@ import * as agentEngine from './agents/agent-engine.js';
 import * as wsServer from './gateway/ws.server.js';
 import { app, start as startHttp, stop as stopHttp } from './gateway/http.server.js';
 import * as vaultWatcher from './memory/vault.watcher.js';
+import * as taskService from './orchestrator/task.service.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -68,7 +69,8 @@ async function boot(): Promise<void> {
 
   // ── 4. Session manager ──────────────────────────────────────────────
   sessionManager.init(sqliteStore);
-  console.log('[boot] Session manager initialised');
+  taskService.init(sqliteStore);
+  console.log('[boot] Session manager and Task service initialised');
 
   // ── 5. Tool plugins ─────────────────────────────────────────────────
   await toolRegistry.loadPlugins();

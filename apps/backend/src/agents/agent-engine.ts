@@ -16,6 +16,7 @@
 
 import { glob } from 'glob';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   Agent,
@@ -29,6 +30,7 @@ import type {
 import { streamComplete } from '../openclaude/openclaude.client.js';
 import * as ollamaClient from '../ollama/ollama.client.js';
 import * as toolRegistry from '../tools/tool-registry.js';
+import * as taskService from '../orchestrator/task.service.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,6 +45,8 @@ export interface DispatchOptions {
   workspacePath: string;
   /** Callback to emit WebSocket events (agent:status, message:token, etc.). */
   emit: EmitFn;
+  /** Callback to request user approval for destructive tools. */
+  onConfirmationRequired: (toolName: string, args: unknown) => Promise<boolean>;
   /** Optional AbortController — calling `.abort()` cancels the active gRPC stream. */
   signal?: AbortSignal;
 }
@@ -110,7 +114,7 @@ const activeControllers = new Map<string, AbortController>();
  */
 export async function loadAgents(): Promise<void> {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const pattern = path.join(currentDir, '*.agent.{ts,js}');
+  const pattern = path.join(currentDir, '**/*.agent.{ts,js}');
   const files = await glob(pattern, { windowsPathsNoEscape: true });
 
   // Collect agents, then register specialised ones first, catch-all last
@@ -126,7 +130,7 @@ export async function loadAgents(): Promise<void> {
     const agent = (mod['default'] ?? mod['agent']) as Agent | undefined;
 
     if (agent && typeof agent.name === 'string') {
-      if (agent.name === 'general') {
+      if (agent.isFallback) {
         catchAll = agent;
       } else {
         specialised.push(agent);
@@ -187,7 +191,12 @@ export function matchIntent(
   message: string,
   context?: AgentContext,
 ): Agent | undefined {
-  return agents.find((a) => a.matchesIntent(message, context));
+  // Try specialized agents first (those with a matchesIntent function)
+  const specializedMatch = agents.find((a) => a.matchesIntent?.(message, context));
+  if (specializedMatch) return specializedMatch;
+
+  // Fallback to the first agent marked as fallback
+  return agents.find((a) => a.isFallback);
 }
 
 // ---------------------------------------------------------------------------
@@ -215,32 +224,36 @@ export function cancel(sessionId: string): void {
  * intent.
  *
  * The dispatch:
- * 1. Selects an agent via {@link matchIntent}.
- * 2. Emits `agent:status` → `running`.
- * 3. Streams the completion from OpenClaude.
- * 4. Intercepts `tool_call` chunks, enforces the allowlist, and executes
- *    tools via the Tool Registry.
- * 5. Emits `agent:status` → `done` (or `error`).
- *
- * @returns A {@link DispatchResult} with the agent name, accumulated text,
- *          and cancellation flag.
+ * Dispatch a user request to the most appropriate agent and manage the turn-based
+ * autonomous tool execution loop.
  */
 export async function dispatch(
   request: CompletionRequest,
   sessionId: string,
   options: DispatchOptions,
 ): Promise<DispatchResult> {
-  const { workspacePath, emit, signal } = options;
+  const { workspacePath, emit, onConfirmationRequired, signal } = options;
 
   // --- Extract user message for intent matching ---
   const userMessage = extractUserMessage(request);
 
+  // --- Task Initialization ---
+  let task = taskService.getActiveTask(sessionId);
+  if (!task) {
+    // If the message looks like a goal, start a new task
+    const isGoal = userMessage.length > 20 || /pode|faz|cria|resolve|busca/i.test(userMessage);
+    if (isGoal) {
+      task = taskService.createTask(sessionId, userMessage);
+    }
+  }
+
   const agentContext: AgentContext = {
     sessionId,
     workspacePath,
+    task,
   };
 
-  const agent = matchIntent(userMessage, agentContext);
+  let agent = matchIntent(userMessage, agentContext);
   if (!agent) {
     throw new NoMatchingAgentError();
   }
@@ -286,12 +299,37 @@ export async function dispatch(
           text += chunk.token;
           emit('message:token', { sessionId, token: chunk.token });
         } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+          const toolName = chunk.toolCall.name;
+          
+          // --- Auto-Escalation ---
+          if (!agent.allowedTools.includes(toolName)) {
+            const escalatedAgent = agents.find(a => a.allowedTools.includes(toolName));
+            if (escalatedAgent) {
+              emit('agent:status', { agent: escalatedAgent.name, status: 'running', detail: `Escalated from ${agent.name} to handle ${toolName}` });
+              agent = escalatedAgent;
+            }
+          }
+
+          // --- Budget Enforcement ---
+          if (task && !taskService.recordAttempt(sessionId, task.id)) {
+            return { agent: agent.name, text: text + '\n\n[Execution stopped: task budget exceeded]', cancelled: true };
+          }
+
+          // --- Task Step Tracking ---
+          if (task) {
+            taskService.updateStep(sessionId, task.id, toolName, 'running', `Executing ${toolName}...`);
+          }
+
           const toolResult = await handleToolCall(
-            chunk.toolCall.name,
-            chunk.toolCall.arguments,
+            toolName,
+            typeof chunk.toolCall.arguments === 'string' ? chunk.toolCall.arguments : JSON.stringify(chunk.toolCall.arguments),
             agent,
-            { workspacePath, sessionId, emit },
+            { workspacePath, sessionId, emit, onConfirmationRequired },
           );
+
+          if (task) {
+            taskService.updateStep(sessionId, task.id, toolName, toolResult.success ? 'completed' : 'failed', toolResult.output || toolResult.error);
+          }
 
           // Emit tool result event
           emit('tool:result', {
@@ -310,30 +348,130 @@ export async function dispatch(
       }
     } catch (grpcErr) {
       // OpenClaude unavailable — fall back to Ollama
-      console.log(`[agent-engine] OpenClaude unavailable, falling back to Ollama: ${(grpcErr as Error).message}`);
       useOllamaFallback = true;
     }
 
-    // --- Ollama fallback (no tool calls, simple chat) ---
+    // --- Ollama fallback (with tool calls) ---
     if (useOllamaFallback && !cancelled) {
       const model = agentRequest.model || 'qwen2.5-coder:14b';
-      // Strip messages to only role+content (Ollama format)
-      const ollamaMessages = agentRequest.messages.map(m => ({
-        role: m.role,
-        content: m.content,
-      }));
-      console.log(`[agent-engine] Calling Ollama with model=${model}, messages=${ollamaMessages.length}`);
-      try {
-        text = await ollamaClient.chat(ollamaMessages, model);
-        console.log(`[agent-engine] Ollama responded: ${text.length} chars`);
-      } catch (ollamaErr) {
-        console.error(`[agent-engine] Ollama fallback failed:`, (ollamaErr as Error).message);
-        throw ollamaErr;
-      }
+      const ollamaMessages = [...agentRequest.messages];
+      const ollamaTools = agentRequest.tools;
 
-      // Emit all tokens at once (Ollama non-streaming)
-      if (text) {
-        emit('message:token', { sessionId, token: text });
+      let turnCount = 0;
+      while (turnCount < agent.maxTurns && !cancelled) {
+        if (controller.signal.aborted) {
+          cancelled = true;
+          break;
+        }
+
+        // Only stream when no tools are available (pure chat).
+        // When tools are present, we must buffer to parse tool calls before showing content.
+        const hasTools = ollamaTools && ollamaTools.length > 0;
+        const response = await ollamaClient.chat(
+          ollamaMessages,
+          model,
+          ollamaTools,
+          hasTools ? undefined : (token) => emit('message:token', { sessionId, token }),
+        );
+
+        // Handle tool calls
+        let toolCalls = response.tool_calls || [];
+
+        // Fallback: Parse from content if no native tool_calls
+        let finalContent = response.content;
+        if (toolCalls.length === 0) {
+          // Find the outermost JSON block
+          const firstBrace = response.content.indexOf('{');
+          const lastBrace = response.content.lastIndexOf('}');
+          
+          if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            const jsonStr = response.content.slice(firstBrace, lastBrace + 1);
+            try {
+              const parsed = JSON.parse(jsonStr);
+              if (parsed.name && (parsed.arguments || parsed.args)) {
+                toolCalls = [{
+                  function: {
+                    name: parsed.name,
+                    arguments: parsed.arguments || parsed.args
+                  }
+                }];
+                // Remove the JSON part AND any surrounding markdown fences from what we show the user
+                finalContent = (response.content.slice(0, firstBrace) + response.content.slice(lastBrace + 1))
+                  .replace(/```json\s*/gi, '')
+                  .replace(/```\s*/g, '')
+                  .trim();
+              } else if (parsed.message || parsed.response || parsed.text || parsed.answer) {
+                // Accidental JSON response from the model
+                finalContent = parsed.message || parsed.response || parsed.text || parsed.answer;
+              }
+            } catch {
+              // JSON is malformed — check if it LOOKS like a tool call attempt and suppress it
+              if (/"name"\s*:/.test(jsonStr) && /"arguments"\s*:/.test(jsonStr)) {
+                finalContent = (response.content.slice(0, firstBrace) + response.content.slice(lastBrace + 1))
+                  .replace(/```json\s*/gi, '')
+                  .replace(/```\s*/g, '')
+                  .trim();
+              }
+            }
+          }
+        }
+
+        // Final cleanup: strip any remaining code fences and stray JSON-like artifacts
+        if (finalContent) {
+          finalContent = finalContent
+            .replace(/```json\s*/gi, '')
+            .replace(/```\s*/g, '')
+            .trim();
+        }
+
+        // Emit text to user (only if not already streamed and has actual content)
+        if (finalContent) {
+          text += finalContent;
+          if (hasTools) {
+            emit('message:token', { sessionId, token: finalContent });
+          }
+        }
+
+        if (toolCalls.length > 0) {
+          // Add assistant message with tool calls to history
+          const assistantMsg = {
+            role: 'assistant',
+            content: response.content,
+            tool_calls: toolCalls.map((tc: any, i: number) => ({
+              id: tc.id || `call_${Date.now()}_${i}`,
+              type: 'function',
+              function: tc.function,
+            })),
+          };
+          ollamaMessages.push(assistantMsg as any);
+
+          for (const call of (assistantMsg.tool_calls as any)) {
+            const toolResult = await handleToolCall(
+              call.function.name,
+              typeof call.function.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function.arguments),
+              agent,
+              { workspacePath, sessionId, emit, onConfirmationRequired },
+            );
+
+            // Add tool result to history
+            ollamaMessages.push({
+              role: 'tool',
+              content: toolResult.output || toolResult.error || 'Done',
+              tool_call_id: call.id,
+            } as any);
+
+            // Emit tool result event
+            emit('tool:result', {
+              toolName: call.function.name,
+              success: toolResult.success,
+              output: toolResult.output,
+            });
+          }
+          turnCount++;
+        } else {
+          // No more tool calls
+          break;
+        }
       }
       emit('message:done', { sessionId, usage: { inputTokens: 0, outputTokens: 0 } });
     }
@@ -347,6 +485,10 @@ export async function dispatch(
     throw error;
   } finally {
     activeControllers.delete(sessionId);
+  }
+
+  if (task) {
+    await taskService.verifySuccess(sessionId, task.id);
   }
 
   return { agent: agent.name, text, cancelled };
@@ -366,7 +508,7 @@ async function handleToolCall(
   toolName: string,
   rawArgs: string,
   agent: Agent,
-  ctx: { workspacePath: string; sessionId: string; emit: EmitFn },
+  ctx: { workspacePath: string; sessionId: string; emit: EmitFn; onConfirmationRequired: (toolName: string, args: unknown) => Promise<boolean> },
 ): Promise<ToolResult> {
   // --- Enforce allowlist ---
   if (!agent.allowedTools.includes(toolName)) {
@@ -390,16 +532,67 @@ async function handleToolCall(
     };
   }
 
+  // --- Check for confirmation ---
+  const plugin = toolRegistry.getPlugin(toolName);
+  if (plugin && plugin.requiresConfirmation(parsedArgs)) {
+    const confirmed = await ctx.onConfirmationRequired(toolName, parsedArgs);
+    if (!confirmed) {
+      return {
+        success: false,
+        output: '',
+        error: 'Tool execution denied by user.',
+      };
+    }
+  }
+
   ctx.emit('tool:executing', { toolName, args: parsedArgs });
 
-  // --- Execute via Tool Registry ---
+  // --- Execute via Tool Registry (bypass confirmation since we already handled it) ---
   try {
-    const result = await toolRegistry.execute(toolName, parsedArgs, {
+    const plugin = toolRegistry.getPlugin(toolName);
+    if (!plugin) {
+      return {
+        success: false,
+        output: '',
+        error: `Tool "${toolName}" not found`,
+      };
+    }
+
+    // Validate args with Zod
+    const { z } = await import('zod');
+    const schema = plugin.inputSchema;
+    let validatedArgs = parsedArgs;
+    if (schema instanceof z.ZodType) {
+      const parseResult = schema.safeParse(parsedArgs);
+      if (!parseResult.success) {
+        return {
+          success: false,
+          output: '',
+          error: `Validation failed for "${toolName}": ${parseResult.error.issues.map(i => i.message).join(', ')}`,
+        };
+      }
+      validatedArgs = parseResult.data;
+    }
+
+    // Execute directly (skip toolRegistry.execute to avoid double confirmation)
+    const result = await plugin.execute(validatedArgs, {
       workspacePath: ctx.workspacePath,
       sessionId: ctx.sessionId,
-      execGuard: {} as import('@clover/shared').ExecGuard, // injected at orchestrator level
+      execGuard: {} as import('@clover/shared').ExecGuard,
       emitEvent: ctx.emit,
     });
+
+    // --- Post-Condition Check ---
+    if (result.success) {
+      if (toolName === 'write-file' || toolName === 'edit-file') {
+        const filePath = (validatedArgs as any).path;
+        if (filePath && !existsSync(path.resolve(ctx.workspacePath, filePath))) {
+          result.success = false;
+          result.error = `Post-condition failed: File "${filePath}" was not created or found after write-file.`;
+        }
+      }
+    }
+
     return result;
   } catch (error: unknown) {
     const message =
@@ -442,11 +635,16 @@ function injectSystemPrompt(
   ];
 
   // Filter tools to only those in the agent's allowlist
-  const tools = request.tools?.filter((t) =>
-    agent.allowedTools.includes(t.name),
-  );
+  const tools = request.tools?.filter((t) => {
+    const name = (t as any).function?.name || t.name;
+    return agent.allowedTools.includes(name);
+  });
 
-  return { ...request, messages, tools };
+  return { 
+    ...request, 
+    messages, 
+    tools: tools && tools.length > 0 ? tools : undefined 
+  };
 }
 
 /**

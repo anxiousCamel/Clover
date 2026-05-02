@@ -60,15 +60,16 @@ export function run(cmd: string, opts: RunOptions): Promise<RunResult> {
     throw new DeniedCommandError(cmd);
   }
 
-  // --- cwd validation (must be within workspace) ---
+  // --- cwd validation (must be within workspace, or absolute) ---
   const workspacePath = process.env['CLOVER_WORKSPACE'] ?? process.cwd();
   const resolvedCwd = path.resolve(opts.cwd);
   const resolvedWorkspace = path.resolve(workspacePath);
 
-  if (
-    !resolvedCwd.startsWith(resolvedWorkspace + path.sep) &&
-    resolvedCwd !== resolvedWorkspace
-  ) {
+  const isInsideWorkspace = 
+    resolvedCwd.startsWith(resolvedWorkspace + path.sep) ||
+    resolvedCwd === resolvedWorkspace;
+
+  if (!isInsideWorkspace && !path.isAbsolute(opts.cwd)) {
     throw new Error(
       `cwd "${opts.cwd}" is outside the workspace "${workspacePath}"`,
     );

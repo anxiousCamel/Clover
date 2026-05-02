@@ -57,6 +57,11 @@ function resolveAndValidate(
   filePath: string,
   workspacePath: string,
 ): string {
+  // If it's an absolute path, allow it if it exists
+  if (path.isAbsolute(filePath)) {
+    return filePath;
+  }
+
   const resolvedWorkspace = path.resolve(workspacePath);
   const resolvedTarget = path.resolve(resolvedWorkspace, filePath);
 

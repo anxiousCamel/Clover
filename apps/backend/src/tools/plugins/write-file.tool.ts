@@ -47,6 +47,11 @@ function resolveAndValidate(
   filePath: string,
   workspacePath: string,
 ): string {
+  // If it's an absolute path, allow it
+  if (path.isAbsolute(filePath)) {
+    return filePath;
+  }
+
   const resolvedWorkspace = path.resolve(workspacePath);
   const resolvedTarget = path.resolve(resolvedWorkspace, filePath);
 
@@ -102,6 +107,14 @@ const plugin: ToolPlugin = {
       // Create parent directories if they don't exist
       const parentDir = path.dirname(resolvedPath);
       await fs.mkdir(parentDir, { recursive: true });
+
+      // Snapshot before overwrite
+      if (existsSync(resolvedPath)) {
+        const snapshotDir = path.join(workspacePath, '.clover', 'snapshots', ctx.sessionId);
+        await fs.mkdir(snapshotDir, { recursive: true });
+        const snapshotFile = path.join(snapshotDir, `${path.basename(resolvedPath)}.${Date.now()}.bak`);
+        await fs.copyFile(resolvedPath, snapshotFile);
+      }
 
       await fs.writeFile(resolvedPath, content, 'utf-8');
       return { success: true, output: `File written: ${filePath}` };

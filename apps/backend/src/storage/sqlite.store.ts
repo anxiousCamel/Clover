@@ -129,6 +129,20 @@ export class SQLiteStore {
         created_at  TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id           TEXT PRIMARY KEY,
+        session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        goal         TEXT NOT NULL,
+        status       TEXT NOT NULL CHECK(status IN ('running','blocked','done','failed')),
+        current_step TEXT,
+        steps        TEXT NOT NULL, -- JSON array of TaskStep
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        budget       TEXT NOT NULL, -- JSON object of ExecutionBudget
+        created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
   }
 
   // ── Session CRUD ──────────────────────────────────────────────────────
@@ -233,6 +247,62 @@ export class SQLiteStore {
       ],
     );
     this.persist();
+  }
+
+  // ── Tasks ────────────────────────────────────────────────────────────
+
+  saveTask(sessionId: string, task: import('@clover/shared').TaskState): void {
+    this.db.run(
+      `INSERT OR REPLACE INTO tasks (id, session_id, goal, status, current_step, steps, attempts, budget)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        task.id,
+        sessionId,
+        task.goal,
+        task.status,
+        task.currentStep ?? null,
+        JSON.stringify(task.steps),
+        task.attempts,
+        JSON.stringify(task.budget),
+      ],
+    );
+    this.persist();
+  }
+
+  getTask(id: string): any | undefined {
+    const stmt = this.db.prepare('SELECT * FROM tasks WHERE id = ?');
+    stmt.bind([id]);
+    if (stmt.step()) {
+      const columns = stmt.getColumnNames();
+      const values = stmt.get();
+      const raw = rowToObject(columns, values);
+      stmt.free();
+      return {
+        ...raw,
+        steps: JSON.parse(raw.steps as string),
+        budget: JSON.parse(raw.budget as string),
+      };
+    }
+    stmt.free();
+    return undefined;
+  }
+
+  getTaskBySession(sessionId: string): any | undefined {
+    const stmt = this.db.prepare('SELECT * FROM tasks WHERE session_id = ? ORDER BY created_at DESC LIMIT 1');
+    stmt.bind([sessionId]);
+    if (stmt.step()) {
+      const columns = stmt.getColumnNames();
+      const values = stmt.get();
+      const raw = rowToObject(columns, values);
+      stmt.free();
+      return {
+        ...raw,
+        steps: JSON.parse(raw.steps as string),
+        budget: JSON.parse(raw.budget as string),
+      };
+    }
+    stmt.free();
+    return undefined;
   }
 
   close(): void {

@@ -20,7 +20,10 @@ export type {
   ExecGuardResult,
   ToolPlugin,
   ToolResult,
+  ToolName,
 } from './tools.js';
+
+export { TOOL_NAMES } from './tools.js';
 
 export type {
   AgentContext,

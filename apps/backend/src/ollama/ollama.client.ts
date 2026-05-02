@@ -44,18 +44,14 @@ async function fetchWithRetry(
     try {
       const res = await fetch(url, init);
 
-      // Retry on server errors (5xx)
+      // Do not retry on server errors (500) for Ollama, as it usually means a crash/OOM
       if (res.status >= 500) {
-        lastError = new OllamaError(
-          `Ollama returned HTTP ${res.status}`,
+        const body = await res.text().catch(() => '');
+        throw new OllamaError(
+          `Ollama returned HTTP ${res.status}: ${body}`,
           endpoint,
           res.status,
         );
-        if (attempt < retryAttempts - 1) {
-          await sleep(retryBackoffMs * Math.pow(2, attempt));
-          continue;
-        }
-        throw lastError;
       }
 
       // Non-5xx errors are not retried — surface immediately
@@ -98,15 +94,27 @@ function sleep(ms: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Send a chat completion request to Ollama and return the assistant message content.
+ * Send a chat completion request to Ollama and return the assistant message.
+ * Supports streaming if a callback is provided.
  */
-export async function chat(messages: Message[], model: string): Promise<string> {
+export async function chat(
+  messages: Message[],
+  model: string,
+  tools?: any[],
+  onToken?: (token: string) => void,
+): Promise<{ content: string; tool_calls?: any[] }> {
   const url = `${config.ollama.host}/api/chat`;
 
   const body = JSON.stringify({
     model,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    stream: false,
+    messages: messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      tool_calls: (m as any).tool_calls,
+      tool_call_id: (m as any).tool_call_id,
+    })),
+    ...(tools && tools.length > 0 ? { tools } : {}),
+    stream: !!onToken,
   });
 
   const res = await fetchWithRetry(
@@ -119,8 +127,43 @@ export async function chat(messages: Message[], model: string): Promise<string> 
     '/api/chat',
   );
 
-  const json = (await res.json()) as { message?: { content?: string } };
-  return json.message?.content ?? '';
+
+  if (onToken) {
+    let fullContent = '';
+    let toolCalls: any[] = [];
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('Ollama response body is not readable');
+
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(l => l.trim());
+      
+      for (const line of lines) {
+        try {
+          const json = JSON.parse(line);
+          if (json.message?.content) {
+            fullContent += json.message.content;
+            onToken(json.message.content);
+          }
+          if (json.message?.tool_calls) {
+            toolCalls = [...toolCalls, ...json.message.tool_calls];
+          }
+          if (json.done) break;
+        } catch { /* skip partial lines */ }
+      }
+    }
+    return { content: fullContent, tool_calls: toolCalls.length > 0 ? toolCalls : undefined };
+  } else {
+    const json = (await res.json()) as { message?: { content?: string; tool_calls?: any[] } };
+    return {
+      content: json.message?.content ?? '',
+      tool_calls: json.message?.tool_calls,
+    };
+  }
 }
 
 /**

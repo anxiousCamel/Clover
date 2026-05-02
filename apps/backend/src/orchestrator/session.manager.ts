@@ -12,6 +12,7 @@
 import type { Message, Chunk } from '@clover/shared';
 import { config } from '../config/config.js';
 import { SQLiteStore, type Session } from '../storage/sqlite.store.js';
+import { compressHistory } from './context-compressor.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -146,11 +147,11 @@ export function getModel(sessionId: string): string | null {
  * @returns An ordered array of {@link Message} objects ready for the
  *          completion request.
  */
-export function buildContextWindow(
+export async function buildContextWindow(
   sessionId: string,
   memoryChunks: Chunk[],
   systemPrompt: string,
-): Message[] {
+): Promise<Message[]> {
   const messages: Message[] = [];
 
   // 1. System prompt
@@ -163,8 +164,9 @@ export function buildContextWindow(
   }
 
   // 3. Conversation history (already ordered ASC by created_at)
-  const history = loadHistory(sessionId);
-  messages.push(...history);
+  const rawHistory = loadHistory(sessionId);
+  const compressedHistory = await compressHistory(rawHistory);
+  messages.push(...compressedHistory);
 
   return messages;
 }
