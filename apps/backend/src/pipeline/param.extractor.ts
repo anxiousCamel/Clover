@@ -40,7 +40,7 @@ function stripAccents(s: string): string {
 
 /**
  * Map well-known location keywords to actual OS paths.
- * Handles both PT and EN, with accent normalization.
+ * Handles both PT and EN, with fuzzy matching for common typos.
  */
 function resolveWellKnownLocation(input: string): string | undefined {
   const normalized = stripAccents(input.toLowerCase());
@@ -48,11 +48,11 @@ function resolveWellKnownLocation(input: string): string | undefined {
 
   const LOCATIONS: Array<{ patterns: string[]; resolve: () => string }> = [
     {
-      patterns: ['area de trabalho', 'desktop'],
+      patterns: ['area de trabalho', 'desktop', 'area de trabalhe', 'area de trab', 'ambiente de trabalho'],
       resolve: () => path.join(homeDir, 'Desktop'),
     },
     {
-      patterns: ['documentos', 'documents', 'meus documentos'],
+      patterns: ['documentos', 'documents', 'meus documentos', 'docs'],
       resolve: () => path.join(homeDir, 'Documents'),
     },
     {
@@ -62,6 +62,10 @@ function resolveWellKnownLocation(input: string): string | undefined {
     {
       patterns: ['home', 'pasta pessoal', 'pasta do usuario'],
       resolve: () => homeDir,
+    },
+    {
+      patterns: ['projeto', 'workspace', 'pasta do projeto', 'root do projeto'],
+      resolve: () => process.env['CLOVER_WORKSPACE'] ?? process.cwd(),
     },
   ];
 
@@ -88,8 +92,19 @@ function extractPathFromText(input: string): string | undefined {
   if (unixAbs) return unixAbs[0].replace(/[.,;)]+$/, '');
 
   // Quoted path or filename
-  const quoted = input.match(/["']([^"']{3,})["']/);
-  if (quoted && /[/\\.]/.test(quoted[1])) return quoted[1];
+  // HEURISTIC: Quoted string must be relatively short and contain path/file indicators
+  const quoted = input.match(/["']([^"']{3,255})["']/);
+  if (quoted) {
+    const candidate = quoted[1];
+    // If it has spaces AND doesn't have a clear extension/slash, it's probably content, not a path
+    const hasSpace = /\s/.test(candidate);
+    const hasPathIndicator = /[/\\.]/.test(candidate);
+    const isShort = candidate.length < 50;
+
+    if (hasPathIndicator && (isShort || !hasSpace)) {
+      return candidate;
+    }
+  }
 
   // Bare filename with extension (common types)
   const bare = input.match(
@@ -213,7 +228,7 @@ export function validatePath(
 // Deictic detection
 // ---------------------------------------------------------------------------
 
-const DEICTIC_TOKENS = ['la', 'ali', 'ai', 'nele', 'nela', 'isso', 'esse', 'essa', 'naquele', 'naquela'];
+const DEICTIC_TOKENS = ['la', 'ali', 'ai', 'nele', 'nela', 'isso', 'esse', 'essa', 'naquele', 'naquela', 'dele', 'dela', 'aqui'];
 
 function hasDeictic(input: string): boolean {
   const normalized = stripAccents(input.toLowerCase());
@@ -235,20 +250,43 @@ function hasDeictic(input: string): boolean {
  *   4. Context lastFilePath (ONLY if deictic reference present AND no explicit path found)
  *   5. Workspace fallback
  */
+/**
+ * Resolve file path with strict priority:
+ *   1. Well-known location keywords ("desktop", "área de trabalho") — dominant if present
+ *   2. Explicit path in input (absolute or with extension)
+ *   3. Natural language filename ("arquivo teste txt")
+ *   4. Context lastFilePath (ONLY if deictic reference present AND no explicit path found)
+ *   5. Workspace fallback
+ */
 function resolveFilePath(
   input: string,
   context: OperationalContext,
   workspacePath: string,
   defaultFilename?: string,
 ): { path: string; source: string } {
+  const location = resolveWellKnownLocation(input);
+
   // 1. Explicit path (absolute or with extension)
   const explicit = extractPathFromText(input);
   if (explicit) {
-    const location = resolveWellKnownLocation(input);
     // If it's a relative path and we have a well-known location, combine them
+    // BUT only if 'explicit' isn't just a repetition of the location (e.g., "Desktop/")
     if (location && !path.isAbsolute(explicit)) {
+      const normalizedExplicit = explicit.toLowerCase().replace(/[/\\]+$/, '');
+      const locationBase = path.basename(location).toLowerCase();
+      
+      if (normalizedExplicit === locationBase || normalizedExplicit === 'area de trabalho') {
+        return { path: path.normalize(location), source: 'location_direct' };
+      }
+      
       return { path: path.normalize(path.join(location, explicit)), source: 'explicit+location' };
     }
+    
+    // If we have a location but explicit is absolute, explicit wins (likely user being specific)
+    if (path.isAbsolute(explicit)) {
+      return { path: path.normalize(explicit), source: 'explicit_absolute' };
+    }
+
     const resolved = resolvePath(explicit, workspacePath);
     return { path: path.normalize(resolved), source: 'explicit' };
   }
@@ -256,13 +294,11 @@ function resolveFilePath(
   // 2. Natural language filename
   const naturalFile = extractNaturalFilename(input);
   if (naturalFile) {
-    const location = resolveWellKnownLocation(input);
     const base = location ?? workspacePath;
     return { path: path.normalize(path.join(base, naturalFile)), source: 'natural_filename' };
   }
 
   // 3. Well-known location only (no filename)
-  const location = resolveWellKnownLocation(input);
   if (location) {
     if (defaultFilename) {
       return { path: path.normalize(path.join(location, defaultFilename)), source: 'location+default' };
@@ -271,7 +307,6 @@ function resolveFilePath(
   }
 
   // 4. Context lastFilePath — ONLY with deictic reference
-  // This is a CRITICAL fallback, only used if the user didn't specify a new path.
   if (hasDeictic(input) && context.lastFilePath) {
     return { path: path.normalize(context.lastFilePath), source: 'context_deictic' };
   }

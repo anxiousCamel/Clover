@@ -12,7 +12,18 @@
  * @module pipeline/heuristic.gate
  */
 
-const ACTION_THRESHOLD = 2;
+// --- Weights ---
+const WEIGHTS = {
+  filePath: 4,
+  filesystemNoun: 3,
+  actionVerb: 4, // Increased from 2
+  deictic: 2,
+  imperative: 3, // Increased from 1
+  contentRequest: 3,
+};
+
+// --- Thresholds ---
+const ACTION_THRESHOLD = 1; // Lowered from 2 to be extremely proactive
 
 export interface GateResult {
   /** Whether this input should proceed to LLM classification. */
@@ -114,6 +125,20 @@ function scoreImperative(input: string): number {
   return 0;
 }
 
+/** Interrogative and follow-up words (PT + EN). Score 0–1. */
+function scoreInterrogative(input: string): number {
+  const normalized = stripAccents(input.toLowerCase());
+  const interrogatives = [
+    'cade', 'onde', 'qual', 'quais', 'quem', 'quanto', 'quantos',
+    'where', 'what', 'which', 'who', 'how',
+    'mostra', 'exibe', 'revela', 'encontra',
+  ];
+  return interrogatives.some(i => {
+    const regex = new RegExp(`\\b${i}\\b`, 'i');
+    return regex.test(normalized);
+  }) ? 1 : 0;
+}
+
 /** Content-generation request words. Score 0–1. */
 function scoreContentRequest(input: string): number {
   const normalized = stripAccents(input.toLowerCase());
@@ -131,22 +156,27 @@ function scoreContentRequest(input: string): number {
 
 /**
  * Evaluate whether an input warrants LLM intent classification.
- *
- * Tuned for RECALL: a false positive just costs one LLM classify call.
- * A false negative causes the pipeline to skip tool execution entirely,
- * which leads to hallucinated responses. Prefer passing borderline inputs.
  */
-export function evaluateGate(input: string): GateResult {
+export function evaluateGate(input: string, context?: { lastIntent?: string }): GateResult {
   const features: Record<string, number> = {
     filePath: scoreFilePath(input),
     filesystemNoun: scoreFilesystemNoun(input),
     actionVerb: scoreActionVerb(input),
     deictic: scoreDeictic(input),
     imperative: scoreImperative(input),
+    interrogative: scoreInterrogative(input),
     contentRequest: scoreContentRequest(input),
   };
 
-  const score = Object.values(features).reduce((sum, v) => sum + v, 0);
+  let score = Object.values(features).reduce((sum, v) => sum + v, 0);
+
+  // CONTEXT BONUS: if we have an active action context, follow-ups are more likely actions
+  if (context?.lastIntent && context.lastIntent !== 'chat' && context.lastIntent !== 'unknown') {
+    // If it looks even slightly like an interrogation or deictic, boost it
+    if (features['interrogative'] > 0 || features['deictic'] > 0 || features['imperative'] > 0) {
+      score += 1;
+    }
+  }
 
   return {
     looksLikeAction: score >= ACTION_THRESHOLD,

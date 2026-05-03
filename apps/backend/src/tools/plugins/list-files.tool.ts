@@ -137,7 +137,24 @@ const plugin: ToolPlugin = {
 
     try {
       const entries = await listEntries(resolvedPath, 1, depth);
-      return { success: true, output: JSON.stringify(entries) };
+      
+      if (entries.length === 0) {
+        return { success: true, output: 'Diretório vazio.' };
+      }
+
+      const formatted = entries
+        .sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map(e => {
+          const icon = e.type === 'directory' ? '📁' : '📄';
+          const size = e.type === 'file' ? ` (${Math.round(e.size / 1024)} KB)` : '';
+          return `${icon} ${e.name}${size}`;
+        })
+        .join('\n');
+
+      return { success: true, output: formatted };
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Unknown list error';

@@ -215,8 +215,9 @@ async function chat(sessionId: string, userMessage: string, rl: readline.Interfa
           rl.resume();
           rl.question(chalk.yellow('Selection (1/2/3): '), (answer) => {
             rl.pause();
-            const choice = answer.trim();
-            if (choice === '2') {
+            const choice = answer.trim().toLowerCase();
+            const affirmative = ['2', 'allow', 'y', 'yes', 'sim', 's', 'ok', 'pode', 'bora'];
+            if (affirmative.includes(choice)) {
               resolve(true);
             } else {
               resolve(false);
@@ -269,6 +270,15 @@ async function chat(sessionId: string, userMessage: string, rl: readline.Interfa
   );
 
   const response = result.text;
+
+  // If the response came from the pipeline (direct execution), it wasn't streamed.
+  // We need to print it now.
+  if (result.agent === 'pipeline' && response) {
+    readline.cursorTo(process.stdout, 0);
+    readline.clearLine(process.stdout, 0);
+    process.stdout.write(chalk.cyan('clover › '));
+    console.log(response);
+  }
 
   // Save to history — include tool results so model remembers what it did
   sessionManager.saveMessage(sessionId, { role: 'user', content: userMessage });

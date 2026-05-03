@@ -54,10 +54,12 @@ export function pipelineLog(event: PipelineLogEvent): void {
   };
 
   // Color-coded stderr: green for executions, gray for everything else
-  const color = event.event === 'route:execute' ? '\x1b[32m' : '\x1b[90m';
-  process.stderr.write(
-    `${color}[pipeline] ${event.event}${event.data ? ' ' + JSON.stringify(event.data) : ''}\x1b[0m\n`,
-  );
+  if (process.env['CLOVER_DEBUG'] === 'true') {
+    const color = event.event === 'route:execute' ? '\x1b[32m' : '\x1b[90m';
+    process.stderr.write(
+      `${color}[pipeline] ${event.event}${event.data ? ' ' + JSON.stringify(event.data) : ''}\x1b[0m\n`,
+    );
+  }
 
   if (logFilePath) {
     try {

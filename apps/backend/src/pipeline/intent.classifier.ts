@@ -73,7 +73,7 @@ const VALID_INTENTS = new Set<IntentLabel>([
   'write_file', 'read_file', 'list_files', 'delete_file', 'execute_command', 'chat',
 ]);
 
-const DEICTIC_TOKENS = ['la', 'ali', 'ai', 'nele', 'nela', 'isso', 'esse', 'essa', 'naquele', 'naquela', 'aqui'];
+const DEICTIC_TOKENS = ['la', 'ali', 'ai', 'nele', 'nela', 'isso', 'esse', 'essa', 'naquele', 'naquela', 'aqui', 'cade', 'onde', 'qual'];
 
 /**
  * Detect if input contains strong NEW intent signals that should override
@@ -144,7 +144,9 @@ Rules:
 - If input contains BOTH a deictic ref AND a new action verb, THE VERB WINS.
 - "escreva/write/save/create" + any ref -> write_file (override context).
 - Absolute or relative file path present -> prioritize file intent.
-- Use context ONLY for resolution of deictics like "it", "that", "nele", "la".
+- Follow-up questions like "cade?", "onde?", "mostra" with no verb -> reuse last intent.
+- Passive observations like "está escrito", "aparece", "está assim" -> CHAT (do NOT trigger tools).
+- Use context ONLY for resolution of deictics like "it", "that", "nele", "la", "cade", "dele", "dela".
 ${hints ? `Context: ${hints}` : ''}
 
 Input: ${input}

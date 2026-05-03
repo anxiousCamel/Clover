@@ -55,7 +55,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<PipelineDec
   const context = getContext(sessionId);
 
   // Step 1 — Heuristic gate (< 1ms, no LLM)
-  const gate = evaluateGate(input);
+  const gate = evaluateGate(input, { lastIntent: context.lastIntent });
 
   if (!gate.looksLikeAction) {
     pipelineLog({

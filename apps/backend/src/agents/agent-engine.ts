@@ -201,6 +201,24 @@ export function matchIntent(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Sync operational context after a tool call. */
+function syncContext(sessionId: string, toolName: string, toolArgs: any, success: boolean): void {
+  if (!success) return;
+  
+  const updates: any = { lastIntent: toolName as any };
+  if (toolArgs.path && typeof toolArgs.path === 'string') {
+    updates.lastFilePath = toolArgs.path;
+  }
+  if (toolArgs.content && typeof toolArgs.content === 'string') {
+    updates.lastGeneratedContent = toolArgs.content;
+  }
+  updateContext(sessionId, updates);
+}
+
+// ---------------------------------------------------------------------------
 // Cancellation
 // ---------------------------------------------------------------------------
 
@@ -278,7 +296,9 @@ export async function dispatch(
         error: toolResult.error,
       });
 
-      // Update context with tool output
+      // Update operational context so follow-ups work
+      syncContext(sessionId, toolName, toolArgs, toolResult.success);
+
       updateContext(sessionId, { lastToolOutput: toolResult.output || toolResult.error });
 
       const responseText = toolResult.success
@@ -398,6 +418,9 @@ export async function dispatch(
             output: toolResult.output,
             error: toolResult.error,
           });
+
+          // Update operational context
+          syncContext(sessionId, chunk.toolCall.name, chunk.toolCall.arguments, toolResult.success);
 
           turnCount++;
           if (turnCount >= agent.maxTurns) {
@@ -528,6 +551,9 @@ export async function dispatch(
               output: toolResult.output,
               error: toolResult.error,
             });
+
+            // Update operational context
+            syncContext(sessionId, call.function.name, call.function.arguments, toolResult.success);
           }
           turnCount++;
         } else {
