@@ -31,6 +31,7 @@ import { streamComplete } from '../openclaude/openclaude.client.js';
 import * as ollamaClient from '../ollama/ollama.client.js';
 import * as toolRegistry from '../tools/tool-registry.js';
 import * as taskService from '../orchestrator/task.service.js';
+import { runPipeline, updateContext } from '../pipeline/index.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -236,6 +237,65 @@ export async function dispatch(
 
   // --- Extract user message for intent matching ---
   const userMessage = extractUserMessage(request);
+
+  // ---------------------------------------------------------------------------
+  // PIPELINE — deterministic intent classification + forced tool execution
+  // ---------------------------------------------------------------------------
+  // Runs BEFORE agent routing. If the pipeline decides to execute a tool,
+  // we skip the LLM turn entirely and return immediately.
+  // ---------------------------------------------------------------------------
+  try {
+    const pipelineDecision = await runPipeline({
+      input: userMessage,
+      sessionId,
+      workspacePath,
+      model: request.model || 'qwen2.5-coder:14b',
+    });
+
+    if (pipelineDecision.mode === 'execute' && pipelineDecision.toolName && pipelineDecision.toolArgs) {
+      const { toolName, toolArgs } = pipelineDecision;
+
+      emitStatus(emit, 'pipeline', 'running');
+      emit('tool:executing', { toolName, args: toolArgs });
+
+      // Confirmation check
+      const plugin = toolRegistry.getPlugin(toolName);
+      if (plugin?.requiresConfirmation(toolArgs)) {
+        const approved = await onConfirmationRequired(toolName, toolArgs);
+        if (!approved) {
+          emitStatus(emit, 'pipeline', 'done');
+          return { agent: 'pipeline', text: 'Operação cancelada pelo usuário.', cancelled: false };
+        }
+      }
+
+      // Execute tool directly (pipeline bypasses agent allowlist)
+      const toolResult = await executePipelineTool(toolName, toolArgs, workspacePath, sessionId, emit);
+
+      emit('tool:result', {
+        toolName,
+        success: toolResult.success,
+        output: toolResult.output,
+        error: toolResult.error,
+      });
+
+      // Update context with tool output
+      updateContext(sessionId, { lastToolOutput: toolResult.output || toolResult.error });
+
+      const responseText = toolResult.success
+        ? toolResult.output || `Feito: ${toolName}`
+        : `Erro ao executar ${toolName}: ${toolResult.error}`;
+
+      emitStatus(emit, 'pipeline', 'done');
+      emit('message:done', { sessionId, usage: { inputTokens: 0, outputTokens: 0 } });
+      return { agent: 'pipeline', text: responseText, cancelled: false };
+    }
+    // mode='chat' → fall through to normal agent dispatch
+  } catch (pipelineErr) {
+    // Pipeline errors are non-fatal — log and fall through
+    const errMsg = pipelineErr instanceof Error ? pipelineErr.message : String(pipelineErr);
+    process.stderr.write(`\x1b[33m[pipeline] error: ${errMsg}\x1b[0m\n`);
+  }
+  // ---------------------------------------------------------------------------
 
   // --- Task Initialization ---
   let task = taskService.getActiveTask(sessionId);
@@ -659,4 +719,56 @@ function emitStatus(
   detail?: string,
 ): void {
   emit('agent:status', { agent: agentName, status, detail });
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline tool executor (private)
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute a tool directly via the plugin registry, bypassing agent allowlists.
+ * Used exclusively by the pipeline's forced-execution path.
+ */
+async function executePipelineTool(
+  toolName: string,
+  toolArgs: Record<string, unknown>,
+  workspacePath: string,
+  sessionId: string,
+  emit: EmitFn,
+): Promise<ToolResult> {
+  const plugin = toolRegistry.getPlugin(toolName);
+  if (!plugin) {
+    return { success: false, output: '', error: `Tool "${toolName}" not found in registry` };
+  }
+
+  try {
+    const { z } = await import('zod');
+    const schema = plugin.inputSchema;
+    let validatedArgs: unknown = toolArgs;
+
+    if (schema instanceof z.ZodType) {
+      const parsed = schema.safeParse(toolArgs);
+      if (!parsed.success) {
+        return {
+          success: false,
+          output: '',
+          error: `Validation failed for "${toolName}": ${parsed.error.issues.map(i => i.message).join(', ')}`,
+        };
+      }
+      validatedArgs = parsed.data;
+    }
+
+    return await plugin.execute(validatedArgs, {
+      workspacePath,
+      sessionId,
+      execGuard: {} as import('@clover/shared').ExecGuard,
+      emitEvent: emit,
+    });
+  } catch (err) {
+    return {
+      success: false,
+      output: '',
+      error: err instanceof Error ? err.message : 'Tool execution failed',
+    };
+  }
 }

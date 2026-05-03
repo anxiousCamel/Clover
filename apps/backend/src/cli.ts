@@ -26,6 +26,7 @@ import * as ollamaClient from './ollama/ollama.client.js';
 import * as memoryService from './memory/memory.service.js';
 import * as taskService from './orchestrator/task.service.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { initPipelineLogger } from './pipeline/index.js';
 
 // ---------------------------------------------------------------------------
 // Colors & Styling
@@ -74,6 +75,9 @@ async function boot(): Promise<{ sessionId: string }> {
   // Session manager & Task service
   sessionManager.init(store);
   taskService.init(store);
+
+  // Pipeline logger
+  initPipelineLogger(process.cwd());
 
   // Tools
   await toolRegistry.loadPlugins();
