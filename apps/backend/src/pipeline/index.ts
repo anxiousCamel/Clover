@@ -7,6 +7,10 @@
  * The result (PipelineDecision) tells the agent engine whether to force
  * a tool execution or fall through to normal agent dispatch.
  *
+ * IMPORTANT: gate:block returns mode='chat' which means the agent engine
+ * will handle it as a normal conversation. The agent MUST NOT fabricate
+ * tool results — it should respond conversationally only.
+ *
  * @module pipeline/index
  */
 
@@ -60,6 +64,9 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<PipelineDec
       input,
       data: { score: gate.score, features: gate.features },
     });
+
+    // Gate blocked — this is a conversational input.
+    // Do NOT update lastIntent — preserve existing context for next turn.
     const chatClassify: ClassifyResult = { intent: 'chat', confidence: 1, source: 'heuristic' };
     return { mode: 'chat', classify: chatClassify };
   }
@@ -75,27 +82,33 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<PipelineDec
   const classify = await classifyIntent(input, context, model, sessionId);
 
   if (classify.intent === 'chat' || classify.intent === 'unknown') {
+    // Classifier said chat/unknown — do NOT update lastIntent
     return { mode: 'chat', classify };
   }
 
   // Step 3 — Parameter extraction
   const extracted = await extractParams(input, classify.intent, context, workspacePath, model, sessionId);
 
-  // Step 4 — Execution router (tool forcing)
+  // Step 4 — Execution router (tool forcing + validation)
   const decision = routeExecution(extracted, classify, sessionId);
 
-  // Step 5 — Update operational context for the next turn
-  updateContext(sessionId, { lastIntent: classify.intent });
+  // Step 5 — Update operational context ONLY on successful execution routing
+  // Do NOT update context if validation failed (decision.mode === 'chat' with validationError)
+  if (decision.mode === 'execute') {
+    updateContext(sessionId, { lastIntent: classify.intent });
 
-  if (decision.mode === 'execute' && decision.toolArgs) {
-    const args = decision.toolArgs;
-    if (typeof args['path'] === 'string') {
-      updateContext(sessionId, { lastFilePath: args['path'] });
-    }
-    if (classify.intent === 'write_file' && typeof args['content'] === 'string') {
-      updateContext(sessionId, { lastGeneratedContent: args['content'] });
+    if (decision.toolArgs) {
+      const args = decision.toolArgs;
+      if (typeof args['path'] === 'string') {
+        updateContext(sessionId, { lastFilePath: args['path'] });
+      }
+      if (classify.intent === 'write_file' && typeof args['content'] === 'string') {
+        updateContext(sessionId, { lastGeneratedContent: args['content'] });
+      }
     }
   }
+  // If validation failed (mode='chat' with validationError), context stays unchanged.
+  // This prevents stale/incorrect paths from propagating to next turn.
 
   return decision;
 }

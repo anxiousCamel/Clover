@@ -5,7 +5,7 @@
  * fixed IntentLabel. The cache (global, max 500 entries) avoids
  * repeated LLM calls for identical or near-identical inputs.
  *
- * Resolution order: cache → context shortcut → LLM → fallback(unknown)
+ * Resolution order: cache → context shortcut (strict) → LLM → fallback(unknown)
  *
  * @module pipeline/intent.classifier
  */
@@ -62,14 +62,67 @@ export function clearClassifyCache(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Classification
+// Helpers
 // ---------------------------------------------------------------------------
+
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
 
 const VALID_INTENTS = new Set<IntentLabel>([
   'write_file', 'read_file', 'list_files', 'delete_file', 'execute_command', 'chat',
 ]);
 
-const DEICTIC_TOKENS = ['lá', 'ali', 'aí', 'nele', 'nela', 'isso', 'esse', 'essa', 'naquele', 'naquela'];
+const DEICTIC_TOKENS = ['la', 'ali', 'ai', 'nele', 'nela', 'isso', 'esse', 'essa', 'naquele', 'naquela', 'aqui'];
+
+/**
+ * Detect if input contains strong NEW intent signals that should override
+ * context reuse. If the user says "escreva um poema nele", the "escreva"
+ * is a stronger signal than the deictic "nele".
+ */
+const NEW_INTENT_SIGNALS: Array<{ pattern: RegExp; intent: IntentLabel }> = [
+  // Write signals (PT + EN)
+  { pattern: /\b(escreva?|salva[r]?|salve|cria[r]?|crie|coloca[r]?|coloque|adiciona[r]?|adicione|grava[r]?|grave|faz|faca|write|save|create|put|add|edit|update)\b/i, intent: 'write_file' },
+  // Read signals
+  { pattern: /\b(leia|le |ler|mostra[r]?|mostre|exib[aei]|abre?|abra|read|show|open|display|cat|view)\b/i, intent: 'read_file' },
+  // List signals
+  { pattern: /\b(lista[r]?|liste|listar|list|ls|dir)\b/i, intent: 'list_files' },
+  // Delete signals
+  { pattern: /\b(deleta[r]?|delete|apaga[r]?|apague|remove[r]?|remova|erase|rm)\b/i, intent: 'delete_file' },
+  // Execute signals
+  { pattern: /\b(executa[r]?|execute|roda[r]?|rode|run|sh|bash)\b/i, intent: 'execute_command' },
+];
+
+/**
+ * Check if input has explicit new intent signals that conflict with lastIntent.
+ * Returns the detected intent if there's a conflict, undefined otherwise.
+ */
+function detectNewIntentSignal(input: string, lastIntent: IntentLabel): IntentLabel | undefined {
+  const normalized = stripAccents(input.toLowerCase());
+  for (const { pattern, intent } of NEW_INTENT_SIGNALS) {
+    if (pattern.test(normalized) && intent !== lastIntent) {
+      return intent;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Check if input is "purely deictic" — only a deictic reference with no
+ * strong new action verb. Examples:
+ *   "coloca lá" → has "coloca" (write verb) → NOT purely deictic
+ *   "faz isso" → borderline, but "faz" is generic → purely deictic
+ *   "nele" → purely deictic
+ */
+function isPurelyDeictic(input: string, lastIntent: IntentLabel): boolean {
+  const conflicting = detectNewIntentSignal(input, lastIntent);
+  // If there's a conflicting signal, it's NOT purely deictic
+  return conflicting === undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Classification
+// ---------------------------------------------------------------------------
 
 function buildPrompt(input: string, ctx: OperationalContext): string {
   const hints = [
@@ -88,8 +141,10 @@ Labels:
 - chat: questions, conversation, greetings, everything else
 
 Rules:
-- Deictic refs (lá, ali, aí, isso, nele) + prior context → reuse last action
-- Absolute or relative file path present → file intent
+- If input contains BOTH a deictic ref AND a new action verb, THE VERB WINS.
+- "escreva/write/save/create" + any ref -> write_file (override context).
+- Absolute or relative file path present -> prioritize file intent.
+- Use context ONLY for resolution of deictics like "it", "that", "nele", "la".
 ${hints ? `Context: ${hints}` : ''}
 
 Input: ${input}
@@ -120,15 +175,21 @@ export async function classifyIntent(
     return cached;
   }
 
-  // 2. Context shortcut — deictic ref + known prior intent
+  // 2. Context shortcut — ONLY when input is purely deictic
+  //    "coloca lá" with lastIntent=list_files → has "coloca" (write) → skip shortcut → LLM
+  //    "faz isso" with lastIntent=read_file → no conflicting verb → use shortcut
   const lower = input.toLowerCase();
-  const hasDeictic = DEICTIC_TOKENS.some(d => lower.includes(d));
+  const normalized = stripAccents(lower);
+  const hasDeictic = DEICTIC_TOKENS.some(d => {
+    const regex = new RegExp(`\\b${d}\\b`);
+    return regex.test(normalized);
+  });
   const hasActionContext =
     context.lastIntent &&
     context.lastIntent !== 'chat' &&
     context.lastIntent !== 'unknown';
 
-  if (hasDeictic && hasActionContext) {
+  if (hasDeictic && hasActionContext && isPurelyDeictic(input, context.lastIntent!)) {
     const result: ClassifyResult = {
       intent: context.lastIntent!,
       confidence: 0.85,

@@ -82,4 +82,6 @@ export interface PipelineDecision {
   toolArgs?: Record<string, unknown>;
   /** Classification metadata (always present for logging). */
   classify: ClassifyResult;
+  /** Validation error message when execution was blocked (mode='chat' due to validation). */
+  validationError?: string;
 }

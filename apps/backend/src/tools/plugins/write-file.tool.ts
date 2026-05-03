@@ -108,12 +108,18 @@ const plugin: ToolPlugin = {
       const parentDir = path.dirname(resolvedPath);
       await fs.mkdir(parentDir, { recursive: true });
 
-      // Snapshot before overwrite
+      // Snapshot before overwrite (only for files, not directories)
       if (existsSync(resolvedPath)) {
-        const snapshotDir = path.join(workspacePath, '.clover', 'snapshots', ctx.sessionId);
-        await fs.mkdir(snapshotDir, { recursive: true });
-        const snapshotFile = path.join(snapshotDir, `${path.basename(resolvedPath)}.${Date.now()}.bak`);
-        await fs.copyFile(resolvedPath, snapshotFile);
+        const stat = await fs.stat(resolvedPath);
+        if (stat.isDirectory()) {
+          return { success: false, output: '', error: `Cannot write: "${resolvedPath}" is a directory.` };
+        }
+        if (stat.isFile()) {
+          const snapshotDir = path.join(workspacePath, '.clover', 'snapshots', ctx.sessionId);
+          await fs.mkdir(snapshotDir, { recursive: true });
+          const snapshotFile = path.join(snapshotDir, `${path.basename(resolvedPath)}.${Date.now()}.bak`);
+          await fs.copyFile(resolvedPath, snapshotFile);
+        }
       }
 
       await fs.writeFile(resolvedPath, content, 'utf-8');
