@@ -169,6 +169,7 @@ async function chat(sessionId: string, userMessage: string, rl: readline.Interfa
   });
 
   let isStatusActive = false;
+  const toolResults: Array<{tool: string, success: boolean, output: string}> = [];
 
   // Dispatch to agent engine
   const result = await agentEngine.dispatch(
@@ -234,6 +235,13 @@ async function chat(sessionId: string, userMessage: string, rl: readline.Interfa
           readline.clearLine(process.stdout, 0);
           process.stdout.write(`${chalk.cyan('clover › ')}${dim(data.toolName + '...')}`);
         } else if (type === 'tool:result') {
+          // Track tool results for history persistence
+          toolResults.push({
+            tool: data.toolName || 'unknown',
+            success: !!data.success,
+            output: data.output || data.error || '',
+          });
+
           if (data.success) {
             // Clear the "toolName..." status and show brief success
             readline.cursorTo(process.stdout, 0);
@@ -243,7 +251,7 @@ async function chat(sessionId: string, userMessage: string, rl: readline.Interfa
             isStatusActive = false;
             readline.cursorTo(process.stdout, 0);
             readline.clearLine(process.stdout, 0);
-            const errorMsg = data.error || data.output || 'Unknown error';
+            const errorMsg = data.error || data.output || `Tool "${data.toolName}" failed with no error details`;
             process.stdout.write(`  ${chalk.red('✗')} ${dim(errorMsg)}\n`);
           }
         } else if (type === 'agent:status' && data.status === 'running') {
@@ -258,9 +266,17 @@ async function chat(sessionId: string, userMessage: string, rl: readline.Interfa
 
   const response = result.text;
 
-  // Save to history
+  // Save to history — include tool results so model remembers what it did
   sessionManager.saveMessage(sessionId, { role: 'user', content: userMessage });
-  if (response) {
+  if (toolResults.length > 0) {
+    const toolSummary = toolResults.map(t =>
+      `[Tool: ${t.tool}] ${t.success ? '✓' : '✗'} ${t.output}`
+    ).join('\n');
+    sessionManager.saveMessage(sessionId, {
+      role: 'assistant',
+      content: `${toolSummary}${response ? '\n' + response : ''}`,
+    });
+  } else if (response) {
     sessionManager.saveMessage(sessionId, { role: 'assistant', content: response });
   }
 

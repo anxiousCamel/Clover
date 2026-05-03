@@ -1,6 +1,7 @@
 /**
  * Agente fallback — captura mensagens que nenhum agente especializado
- * tratou. Apenas leitura e busca; sem escrita ou execução.
+ * tratou. Tem acesso completo a todas as ferramentas para garantir que
+ * nenhum pedido do usuário fique sem execução.
  *
  * @module agents/general
  */
@@ -32,9 +33,12 @@ export const generalAgent: Agent = {
   systemPrompt: SYSTEM_PROMPT,
   allowedTools: [
     TOOL_NAMES.READ_FILE,
+    TOOL_NAMES.WRITE_FILE,
+    TOOL_NAMES.EDIT_FILE,
     TOOL_NAMES.LIST_FILES,
     TOOL_NAMES.SEARCH_MEMORY,
     TOOL_NAMES.SEARCH_ONLINE,
+    TOOL_NAMES.EXECUTE_COMMAND,
   ],
   maxTurns: MAX_TURNS_FALLBACK,
 };

@@ -336,6 +336,7 @@ export async function dispatch(
             toolName: chunk.toolCall.name,
             success: toolResult.success,
             output: toolResult.output,
+            error: toolResult.error,
           });
 
           turnCount++;
@@ -465,6 +466,7 @@ export async function dispatch(
               toolName: call.function.name,
               success: toolResult.success,
               output: toolResult.output,
+              error: toolResult.error,
             });
           }
           turnCount++;

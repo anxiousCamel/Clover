@@ -125,7 +125,10 @@ const plugin: ToolPlugin = {
   requiresConfirmation: () => false,
 
   async execute(args: unknown, ctx: ToolContext): Promise<ToolResult> {
-    const { path: dirPath, depth } = inputSchema.parse(args);
+    let { path: dirPath, depth } = inputSchema.parse(args);
+
+    // Normalize common Windows path issues (trailing separators, mixed slashes)
+    dirPath = dirPath.replace(/[\\/]+$/, '');
 
     const workspacePath =
       process.env['CLOVER_WORKSPACE'] ?? ctx.workspacePath;
