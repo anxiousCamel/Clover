@@ -1,0 +1,87 @@
+---
+source_file: "src\utils\analyzeContext.ts"
+type: "code"
+community: "Module: messages.ts"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_messages.ts
+---
+
+# analyzeContext.ts
+
+## Connections
+- [[ContextVisualization.tsx]] - `imports_from` [EXTRACTED]
+- [[Tool.ts]] - `imports_from` [EXTRACTED]
+- [[analyzeContextUsage()]] - `contains` [EXTRACTED]
+- [[api.ts_1]] - `imports_from` [EXTRACTED]
+- [[approximateMessageTokens()]] - `contains` [EXTRACTED]
+- [[autoCompact.ts]] - `imports_from` [EXTRACTED]
+- [[buildEffectiveSystemPrompt()]] - `imports` [EXTRACTED]
+- [[claudemd.ts]] - `imports_from` [EXTRACTED]
+- [[commands.ts]] - `imports_from` [EXTRACTED]
+- [[constants.ts_11]] - `imports_from` [EXTRACTED]
+- [[constants.ts_22]] - `imports_from` [EXTRACTED]
+- [[context-noninteractive.ts]] - `imports_from` [EXTRACTED]
+- [[context.ts]] - `imports_from` [EXTRACTED]
+- [[context.ts_1]] - `imports_from` [EXTRACTED]
+- [[context.tsx]] - `imports_from` [EXTRACTED]
+- [[contextSuggestions.ts]] - `imports_from` [EXTRACTED]
+- [[countBuiltInToolTokens()]] - `contains` [EXTRACTED]
+- [[countCustomAgentTokens()]] - `contains` [EXTRACTED]
+- [[countMcpToolTokens()]] - `contains` [EXTRACTED]
+- [[countMemoryFileTokens()]] - `contains` [EXTRACTED]
+- [[countSkillTokens()]] - `contains` [EXTRACTED]
+- [[countSlashCommandTokens()]] - `contains` [EXTRACTED]
+- [[countSystemTokens()]] - `contains` [EXTRACTED]
+- [[countTokensWithFallback()]] - `contains` [EXTRACTED]
+- [[countToolDefinitionTokens()]] - `contains` [EXTRACTED]
+- [[cwd.ts]] - `imports_from` [EXTRACTED]
+- [[debug.ts_1]] - `imports_from` [EXTRACTED]
+- [[doctorContextWarnings.ts]] - `imports_from` [EXTRACTED]
+- [[envUtils.ts]] - `imports_from` [EXTRACTED]
+- [[errorMessage()_1]] - `imports` [EXTRACTED]
+- [[errors.ts_1]] - `imports_from` [EXTRACTED]
+- [[estimateSkillFrontmatterTokens()]] - `imports` [EXTRACTED]
+- [[extractSectionName()]] - `contains` [EXTRACTED]
+- [[filterInjectedMemoryFiles()]] - `imports` [EXTRACTED]
+- [[findSkillTool()]] - `contains` [EXTRACTED]
+- [[findToolByName()]] - `imports` [EXTRACTED]
+- [[getContextWindowForModel()]] - `imports` [EXTRACTED]
+- [[getCwd()]] - `imports` [EXTRACTED]
+- [[getEffectiveContextWindowSize()]] - `imports` [EXTRACTED]
+- [[getFeatureValue_CACHED_MAY_BE_STALE()]] - `imports` [EXTRACTED]
+- [[getLimitedSkillToolCommands()]] - `imports` [EXTRACTED]
+- [[getRuntimeMainLoopModel()]] - `imports` [EXTRACTED]
+- [[getSdkBetas()]] - `imports` [EXTRACTED]
+- [[getSkillToolInfo()]] - `imports` [EXTRACTED]
+- [[getSystemPrompt()]] - `imports` [EXTRACTED]
+- [[growthbook.ts]] - `imports_from` [EXTRACTED]
+- [[isAutoCompactEnabled()]] - `imports` [EXTRACTED]
+- [[isEnvTruthy()_1]] - `imports` [EXTRACTED]
+- [[jsonStringify()]] - `imports` [EXTRACTED]
+- [[loadAgentsDir.ts]] - `imports_from` [EXTRACTED]
+- [[loadSkillsDir.ts]] - `imports_from` [EXTRACTED]
+- [[log.ts]] - `imports_from` [EXTRACTED]
+- [[logError()]] - `imports` [EXTRACTED]
+- [[logForDebugging()]] - `imports` [EXTRACTED]
+- [[message.ts]] - `imports_from` [EXTRACTED]
+- [[messages.ts_1]] - `imports_from` [EXTRACTED]
+- [[microcompactMessages()]] - `imports` [EXTRACTED]
+- [[model.ts]] - `imports_from` [EXTRACTED]
+- [[normalizeMessagesForAPI()]] - `imports` [EXTRACTED]
+- [[processAssistantMessage()]] - `contains` [EXTRACTED]
+- [[processAttachment()]] - `contains` [EXTRACTED]
+- [[processUserMessage()]] - `contains` [EXTRACTED]
+- [[prompt.ts_25]] - `imports_from` [EXTRACTED]
+- [[slowOperations.ts]] - `imports_from` [EXTRACTED]
+- [[state.ts]] - `imports_from` [EXTRACTED]
+- [[systemPrompt.ts]] - `imports_from` [EXTRACTED]
+- [[theme.ts]] - `imports_from` [EXTRACTED]
+- [[toError()]] - `imports` [EXTRACTED]
+- [[toolMatchesName()]] - `imports` [EXTRACTED]
+- [[toolSearch.ts]] - `imports_from` [EXTRACTED]
+- [[toolToAPISchema()]] - `imports` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_messages.ts

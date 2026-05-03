@@ -1,0 +1,21 @@
+---
+source_file: "src\ink\selection.ts"
+type: "code"
+community: "Module: ink.tsx"
+location: "L162"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_ink.tsx
+---
+
+# wordBoundsAt()
+
+## Connections
+- [[cellAt()]] - `calls` [INFERRED]
+- [[charClass()]] - `calls` [EXTRACTED]
+- [[extendSelection()]] - `calls` [EXTRACTED]
+- [[selectWordAt()]] - `calls` [EXTRACTED]
+- [[selection.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_ink.tsx

@@ -1,0 +1,85 @@
+---
+source_file: "src\tools\FileWriteTool\FileWriteTool.ts"
+type: "code"
+community: "Module: main.tsx"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_main.tsx
+---
+
+# FileWriteTool.ts
+
+## Connections
+- [[FileWritePermissionRequest.tsx]] - `imports_from` [EXTRACTED]
+- [[LSPDiagnosticRegistry.ts]] - `imports_from` [EXTRACTED]
+- [[PermissionRequest.tsx]] - `imports_from` [EXTRACTED]
+- [[PermissionResult.ts]] - `imports_from` [EXTRACTED]
+- [[Tool.ts]] - `imports_from` [EXTRACTED]
+- [[UI.tsx_10]] - `imports_from` [EXTRACTED]
+- [[activateConditionalSkillsForPaths()]] - `imports` [EXTRACTED]
+- [[addSkillDirectories()]] - `imports` [EXTRACTED]
+- [[buildTool()]] - `imports` [EXTRACTED]
+- [[checkWritePermissionForTool()]] - `imports` [EXTRACTED]
+- [[clearDeliveredDiagnosticsForFile()]] - `imports` [EXTRACTED]
+- [[constants.ts_7]] - `imports_from` [EXTRACTED]
+- [[countLinesChanged()]] - `imports` [EXTRACTED]
+- [[cwd.ts]] - `imports_from` [EXTRACTED]
+- [[debug.ts_1]] - `imports_from` [EXTRACTED]
+- [[diagnosticTracking.ts]] - `imports_from` [EXTRACTED]
+- [[diff.ts]] - `imports_from` [EXTRACTED]
+- [[discoverSkillDirsForPaths()]] - `imports` [EXTRACTED]
+- [[envUtils.ts]] - `imports_from` [EXTRACTED]
+- [[errors.ts_1]] - `imports_from` [EXTRACTED]
+- [[expandPath()]] - `imports` [EXTRACTED]
+- [[fetchSingleFileGitDiff()]] - `imports` [EXTRACTED]
+- [[file.ts]] - `imports_from` [EXTRACTED]
+- [[fileHistory.ts]] - `imports_from` [EXTRACTED]
+- [[fileHistoryEnabled()]] - `imports` [EXTRACTED]
+- [[fileHistoryTrackEdit()]] - `imports` [EXTRACTED]
+- [[fileOperationAnalytics.ts]] - `imports_from` [EXTRACTED]
+- [[fileRead.ts]] - `imports_from` [EXTRACTED]
+- [[filesystem.ts]] - `imports_from` [EXTRACTED]
+- [[fsOperations.ts]] - `imports_from` [EXTRACTED]
+- [[getCwd()]] - `imports` [EXTRACTED]
+- [[getFeatureValue_CACHED_MAY_BE_STALE()]] - `imports` [EXTRACTED]
+- [[getFileModificationTime()]] - `imports` [EXTRACTED]
+- [[getFsImplementation()]] - `imports` [EXTRACTED]
+- [[getLspServerManager()]] - `imports` [EXTRACTED]
+- [[getPatchForDisplay()]] - `imports` [EXTRACTED]
+- [[getToolUseSummary()_2]] - `imports` [EXTRACTED]
+- [[getWriteToolDescription()]] - `imports` [EXTRACTED]
+- [[gitDiff.ts]] - `imports_from` [EXTRACTED]
+- [[growthbook.ts]] - `imports_from` [EXTRACTED]
+- [[isENOENT()]] - `imports` [EXTRACTED]
+- [[isEnvTruthy()_1]] - `imports` [EXTRACTED]
+- [[isResultTruncated()]] - `imports` [EXTRACTED]
+- [[lazySchema()]] - `imports` [EXTRACTED]
+- [[lazySchema.ts]] - `imports_from` [EXTRACTED]
+- [[loadSkillsDir.ts]] - `imports_from` [EXTRACTED]
+- [[log.ts]] - `imports_from` [EXTRACTED]
+- [[logError()]] - `imports` [EXTRACTED]
+- [[logEvent()]] - `imports` [EXTRACTED]
+- [[logFileOperation()]] - `imports` [EXTRACTED]
+- [[logForDebugging()]] - `imports` [EXTRACTED]
+- [[manager.ts]] - `imports_from` [EXTRACTED]
+- [[matchWildcardPattern()_1]] - `imports` [EXTRACTED]
+- [[matchingRuleForInput()]] - `imports` [EXTRACTED]
+- [[notifyVscodeFileUpdated()]] - `imports` [EXTRACTED]
+- [[path.ts]] - `imports_from` [EXTRACTED]
+- [[primitiveTools.ts]] - `imports_from` [EXTRACTED]
+- [[prompt.ts_13]] - `imports_from` [EXTRACTED]
+- [[readFileSyncWithMetadata()]] - `imports` [EXTRACTED]
+- [[renderToolResultMessage()_8]] - `imports` [EXTRACTED]
+- [[renderToolUseMessage()_10]] - `imports` [EXTRACTED]
+- [[sessionFileAccessHooks.ts]] - `imports_from` [EXTRACTED]
+- [[shellRuleMatching.ts]] - `imports_from` [EXTRACTED]
+- [[tools.ts]] - `imports_from` [EXTRACTED]
+- [[types.ts_15]] - `imports_from` [EXTRACTED]
+- [[useTurnDiffs.ts]] - `imports_from` [EXTRACTED]
+- [[userFacingName()_2]] - `imports` [EXTRACTED]
+- [[vscodeSdkMcp.ts]] - `imports_from` [EXTRACTED]
+- [[writeTextContent()]] - `imports` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_main.tsx

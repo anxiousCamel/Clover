@@ -1,0 +1,85 @@
+---
+source_file: "src\utils\swarm\teamHelpers.ts"
+type: "code"
+community: "Module: logForDebugging()"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_logForDebugging()
+---
+
+# teamHelpers.ts
+
+## Connections
+- [[PermissionMode.ts]] - `imports_from` [EXTRACTED]
+- [[PromptInput.tsx]] - `imports_from` [EXTRACTED]
+- [[REPL.tsx]] - `imports_from` [EXTRACTED]
+- [[SendMessageTool.ts]] - `imports_from` [EXTRACTED]
+- [[TeamCreateTool.ts]] - `imports_from` [EXTRACTED]
+- [[TeamDeleteTool.ts]] - `imports_from` [EXTRACTED]
+- [[TeamsDialog.tsx]] - `imports_from` [EXTRACTED]
+- [[addHiddenPaneId()]] - `contains` [EXTRACTED]
+- [[attachments.ts_1]] - `imports_from` [EXTRACTED]
+- [[cleanupSessionTeams()]] - `contains` [EXTRACTED]
+- [[cleanupTeamDirectories()]] - `contains` [EXTRACTED]
+- [[constants.ts_24]] - `imports_from` [EXTRACTED]
+- [[debug.ts_1]] - `imports_from` [EXTRACTED]
+- [[destroyWorktree()]] - `contains` [EXTRACTED]
+- [[ensureTeamFileExists()]] - `imports_from` [EXTRACTED]
+- [[envUtils.ts]] - `imports_from` [EXTRACTED]
+- [[errorMessage()_1]] - `imports` [EXTRACTED]
+- [[errors.ts_1]] - `imports_from` [EXTRACTED]
+- [[execFileNoThrow.ts]] - `imports_from` [EXTRACTED]
+- [[execFileNoThrowWithCwd()]] - `imports` [EXTRACTED]
+- [[getAgentName()]] - `imports` [EXTRACTED]
+- [[getErrnoCode()]] - `imports` [EXTRACTED]
+- [[getSessionCreatedTeams()]] - `imports` [EXTRACTED]
+- [[getTasksDir()]] - `imports` [EXTRACTED]
+- [[getTeamDir()]] - `contains` [EXTRACTED]
+- [[getTeamFilePath()]] - `contains` [EXTRACTED]
+- [[getTeamName()]] - `imports` [EXTRACTED]
+- [[getTeamsDir()]] - `imports` [EXTRACTED]
+- [[git.ts]] - `imports_from` [EXTRACTED]
+- [[hookChains.ts]] - `imports_from` [EXTRACTED]
+- [[isPaneBackend()]] - `imports` [EXTRACTED]
+- [[isTeammate()]] - `imports` [EXTRACTED]
+- [[jsonParse()]] - `imports` [EXTRACTED]
+- [[jsonStringify()]] - `imports` [EXTRACTED]
+- [[killOrphanedTeammatePanes()]] - `contains` [EXTRACTED]
+- [[lazySchema()]] - `imports` [EXTRACTED]
+- [[lazySchema.ts]] - `imports_from` [EXTRACTED]
+- [[logForDebugging()]] - `imports` [EXTRACTED]
+- [[notifyTasksUpdated()]] - `imports` [EXTRACTED]
+- [[permissionSync.ts]] - `imports_from` [EXTRACTED]
+- [[print.ts]] - `imports_from` [EXTRACTED]
+- [[readTeamFile()]] - `contains` [EXTRACTED]
+- [[readTeamFileAsync()]] - `contains` [EXTRACTED]
+- [[reconnection.ts]] - `imports_from` [EXTRACTED]
+- [[registerTeamForSessionCleanup()]] - `contains` [EXTRACTED]
+- [[removeHiddenPaneId()]] - `contains` [EXTRACTED]
+- [[removeMemberByAgentId()]] - `contains` [EXTRACTED]
+- [[removeMemberFromTeam()]] - `contains` [EXTRACTED]
+- [[removeTeammateFromTeamFile()]] - `contains` [EXTRACTED]
+- [[sanitizeAgentName()]] - `contains` [EXTRACTED]
+- [[sanitizeName()_1]] - `contains` [EXTRACTED]
+- [[setMemberActive()]] - `contains` [EXTRACTED]
+- [[setMemberMode()]] - `contains` [EXTRACTED]
+- [[setMultipleMemberModes()]] - `contains` [EXTRACTED]
+- [[slowOperations.ts]] - `imports_from` [EXTRACTED]
+- [[spawnInProcess.ts]] - `imports_from` [EXTRACTED]
+- [[spawnMultiAgent.ts]] - `imports_from` [EXTRACTED]
+- [[state.ts]] - `imports_from` [EXTRACTED]
+- [[syncTeammateMode()]] - `contains` [EXTRACTED]
+- [[tasks.ts_1]] - `imports_from` [EXTRACTED]
+- [[teamDiscovery.ts]] - `imports_from` [EXTRACTED]
+- [[teammate.ts]] - `imports_from` [EXTRACTED]
+- [[teammateInit.ts]] - `imports_from` [EXTRACTED]
+- [[types.ts_20]] - `imports_from` [EXTRACTED]
+- [[unregisterTeamForSessionCleanup()]] - `contains` [EXTRACTED]
+- [[useInboxPoller.ts]] - `imports_from` [EXTRACTED]
+- [[useSwarmInitialization.ts]] - `imports_from` [EXTRACTED]
+- [[writeTeamFile()]] - `contains` [EXTRACTED]
+- [[writeTeamFileAsync()]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_logForDebugging()

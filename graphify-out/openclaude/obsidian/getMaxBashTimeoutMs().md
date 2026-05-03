@@ -1,0 +1,22 @@
+---
+source_file: "src\utils\timeouts.ts"
+type: "code"
+community: "Module: prompts.ts"
+location: "L28"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_prompts.ts
+---
+
+# getMaxBashTimeoutMs()
+
+## Connections
+- [[getDefaultBashTimeoutMs()]] - `calls` [EXTRACTED]
+- [[getMaxTimeoutMs()]] - `calls` [INFERRED]
+- [[getMaxTimeoutMs()_1]] - `calls` [INFERRED]
+- [[prompt.ts_4]] - `imports` [EXTRACTED]
+- [[prompt.ts_20]] - `imports` [EXTRACTED]
+- [[timeouts.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_prompts.ts

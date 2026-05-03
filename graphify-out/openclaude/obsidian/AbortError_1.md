@@ -1,0 +1,17 @@
+---
+source_file: "src\entrypoints\sdk.d.ts"
+type: "code"
+community: "Module: sdk.d.ts"
+location: "L9"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_sdk.d.ts
+---
+
+# AbortError
+
+## Connections
+- [[sdk.d.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_sdk.d.ts

@@ -1,0 +1,86 @@
+---
+source_file: "src\tools\AgentTool\agentToolUtils.ts"
+type: "code"
+community: "Module: logForDebugging()"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_logForDebugging()
+---
+
+# agentToolUtils.ts
+
+## Connections
+- [[AbortError_2]] - `imports` [EXTRACTED]
+- [[AgentDetail.tsx]] - `imports_from` [EXTRACTED]
+- [[AgentTool.tsx]] - `imports_from` [EXTRACTED]
+- [[LocalAgentTask.tsx]] - `imports_from` [EXTRACTED]
+- [[PermissionMode.ts]] - `imports_from` [EXTRACTED]
+- [[REPL.tsx]] - `imports_from` [EXTRACTED]
+- [[Tool.ts]] - `imports_from` [EXTRACTED]
+- [[agentSummary.ts]] - `imports_from` [EXTRACTED]
+- [[agentSwarmsEnabled.ts]] - `imports_from` [EXTRACTED]
+- [[asAgentId()]] - `imports` [EXTRACTED]
+- [[buildTranscriptForClassifier()]] - `imports` [EXTRACTED]
+- [[classifyHandoffIfNeeded()]] - `contains` [EXTRACTED]
+- [[classifyYoloAction()]] - `imports` [EXTRACTED]
+- [[clearDumpState()]] - `imports` [EXTRACTED]
+- [[clearInvokedSkillsForAgent()]] - `imports` [EXTRACTED]
+- [[completeAgentTask()]] - `imports` [EXTRACTED]
+- [[constants.ts_5]] - `imports_from` [EXTRACTED]
+- [[constants.ts_1]] - `imports_from` [EXTRACTED]
+- [[countToolUses()]] - `contains` [EXTRACTED]
+- [[createActivityDescriptionResolver()]] - `imports` [EXTRACTED]
+- [[createProgressTracker()]] - `imports` [EXTRACTED]
+- [[debug.ts_1]] - `imports_from` [EXTRACTED]
+- [[dumpPrompts.ts]] - `imports_from` [EXTRACTED]
+- [[emitTaskProgress()_1]] - `imports` [EXTRACTED]
+- [[emitTaskProgress()]] - `contains` [EXTRACTED]
+- [[enqueueAgentNotification()]] - `imports` [EXTRACTED]
+- [[envUtils.ts]] - `imports_from` [EXTRACTED]
+- [[errorMessage()_1]] - `imports` [EXTRACTED]
+- [[errors.ts_1]] - `imports_from` [EXTRACTED]
+- [[extractPartialResult()]] - `contains` [EXTRACTED]
+- [[extractTextContent()]] - `imports` [EXTRACTED]
+- [[failAgentTask()]] - `imports` [EXTRACTED]
+- [[filterToolsForAgent()]] - `contains` [EXTRACTED]
+- [[finalizeAgentTool()]] - `contains` [EXTRACTED]
+- [[forkedAgent.ts]] - `imports_from` [EXTRACTED]
+- [[getLastAssistantMessage()]] - `imports` [EXTRACTED]
+- [[getLastToolUseName()]] - `contains` [EXTRACTED]
+- [[getProgressUpdate()]] - `imports` [EXTRACTED]
+- [[getTokenCountFromTracker()]] - `imports` [EXTRACTED]
+- [[ids.ts]] - `imports_from` [EXTRACTED]
+- [[index.ts_85]] - `imports_from` [EXTRACTED]
+- [[isAgentSwarmsEnabled()]] - `imports` [EXTRACTED]
+- [[isInProcessTeammate()]] - `imports` [EXTRACTED]
+- [[isInProtectedNamespace()]] - `imports` [EXTRACTED]
+- [[isLocalAgentTask()]] - `imports` [EXTRACTED]
+- [[killAsyncAgent()]] - `imports` [EXTRACTED]
+- [[lazySchema()]] - `imports` [EXTRACTED]
+- [[lazySchema.ts]] - `imports_from` [EXTRACTED]
+- [[loadAgentsDir.ts]] - `imports_from` [EXTRACTED]
+- [[logEvent()]] - `imports` [EXTRACTED]
+- [[logForDebugging()]] - `imports` [EXTRACTED]
+- [[message.ts]] - `imports_from` [EXTRACTED]
+- [[messages.ts_1]] - `imports_from` [EXTRACTED]
+- [[permissionRuleParser.ts]] - `imports_from` [EXTRACTED]
+- [[permissionRuleValueFromString()]] - `imports` [EXTRACTED]
+- [[resolveAgentTools()]] - `contains` [EXTRACTED]
+- [[resumeAgent.ts]] - `imports_from` [EXTRACTED]
+- [[runAgent.ts]] - `imports_from` [EXTRACTED]
+- [[runAsyncAgentLifecycle()]] - `contains` [EXTRACTED]
+- [[sdkProgress.ts]] - `imports_from` [EXTRACTED]
+- [[startAgentSummarization()]] - `imports` [EXTRACTED]
+- [[state.ts]] - `imports_from` [EXTRACTED]
+- [[teammateContext.ts]] - `imports_from` [EXTRACTED]
+- [[toolMatchesName()]] - `imports` [EXTRACTED]
+- [[tools.ts_1]] - `imports_from` [EXTRACTED]
+- [[types.ts_14]] - `imports_from` [EXTRACTED]
+- [[updateAgentProgress()]] - `imports` [EXTRACTED]
+- [[updateProgressFromMessage()]] - `imports` [EXTRACTED]
+- [[validateAgent.ts]] - `imports_from` [EXTRACTED]
+- [[yoloClassifier.ts]] - `imports_from` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_logForDebugging()

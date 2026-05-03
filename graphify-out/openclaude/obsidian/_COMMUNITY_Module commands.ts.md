@@ -1,0 +1,235 @@
+---
+type: community
+cohesion: 0.02
+members: 186
+---
+
+# Module: commands.ts
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 186 nodes
+
+## Members
+- [[CompanionSprite()]] - code - src\buddy\CompanionSprite.tsx
+- [[CompanionSprite.tsx]] - code - src\buddy\CompanionSprite.tsx
+- [[RainbowText()]] - code - src\buddy\useBuddyNotification.tsx
+- [[SkillsMenu()]] - code - src\components\skills\SkillsMenu.tsx
+- [[SpeechBubble()]] - code - src\buddy\CompanionSprite.tsx
+- [[applyCommandSuggestion()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[artifactGenerator.ts]] - code - src\integrations\artifactGenerator.ts
+- [[auto-fix.ts]] - code - src\commands\auto-fix.ts
+- [[buddy.tsx]] - code - src\commands\buddy\buddy.tsx
+- [[buildPresetManifestEntry()]] - code - src\integrations\artifactGenerator.ts
+- [[call()_9]] - code - src\commands\buddy\buddy.tsx
+- [[call()_3]] - code - src\commands\version.ts
+- [[call()_15]] - code - src\commands\config\config.tsx
+- [[call()_21]] - code - src\commands\diff\diff.tsx
+- [[call()_22]] - code - src\commands\doctor\doctor.tsx
+- [[call()_31]] - code - src\commands\help\help.tsx
+- [[call()_42]] - code - src\commands\output-style\output-style.tsx
+- [[call()_46]] - code - src\commands\plugin\plugin.tsx
+- [[call()_54]] - code - src\commands\rewind\rewind.ts
+- [[call()_57]] - code - src\commands\skills\skills.tsx
+- [[call()_58]] - code - src\commands\stats\stats.tsx
+- [[call()_59]] - code - src\commands\status\status.tsx
+- [[call()_62]] - code - src\commands\tasks\tasks.tsx
+- [[call()_68]] - code - src\commands\usage\usage.tsx
+- [[cleanWord()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[clearCommandMemoizationCaches()]] - code - src\commands.ts
+- [[clearCommandsCache()]] - code - src\commands.ts
+- [[clearPluginSkillsCache()]] - code - src\utils\plugins\loadPluginCommands.ts
+- [[clearSkillCaches()]] - code - src\skills\loadSkillsDir.ts
+- [[command.ts]] - code - src\types\command.ts
+- [[commandSuggestions.ts]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[commands.ts]] - code - src\commands.ts
+- [[companion.ts]] - code - src\buddy\companion.ts
+- [[companionReservedColumns()]] - code - src\buddy\CompanionSprite.tsx
+- [[companionUserId()]] - code - src\buddy\companion.ts
+- [[compareProviderPresetEntries()]] - code - src\integrations\artifactGenerator.ts
+- [[config.tsx]] - code - src\commands\config\config.tsx
+- [[createCommandSuggestionItem()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[createMovedToPluginCommand()]] - code - src\commands\createMovedToPluginCommand.ts
+- [[createMovedToPluginCommand.ts]] - code - src\commands\createMovedToPluginCommand.ts
+- [[createStoredCompanion()]] - code - src\commands\buddy\buddy.tsx
+- [[diff.tsx]] - code - src\commands\diff\diff.tsx
+- [[dispose()_2]] - code - src\utils\skills\skillChangeDetector.ts
+- [[doctor.tsx]] - code - src\commands\doctor\doctor.tsx
+- [[ensureUniqueSuggestionIds()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[extractCommandNameAndArgs()]] - code - src\hooks\useTypeahead.tsx
+- [[feature.ts]] - code - src\buddy\feature.ts
+- [[filterCommandsForRemoteMode()]] - code - src\commands.ts
+- [[findBuddyTriggerPositions()]] - code - src\buddy\useBuddyNotification.tsx
+- [[findMatchedAlias()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[findMidInputSlashCommand()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[findSlashCommandPositions()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[fireCompanionObserver()]] - code - src\buddy\observer.ts
+- [[formatCommand()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[formatDescriptionWithSource()]] - code - src\commands.ts
+- [[generate-integrations-artifacts.ts]] - code - scripts\generate-integrations-artifacts.ts
+- [[generateCommandSuggestions()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[generateIntegrationArtifacts()]] - code - src\integrations\artifactGenerator.ts
+- [[generatedIntegrationArtifactsAreCurrent()]] - code - src\integrations\artifactGenerator.ts
+- [[getAllCommands()]] - code - src\tools\SkillTool\SkillTool.ts
+- [[getBestCommandMatch()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[getCommandFuse()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[getCommandId()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[getCommandName()_1]] - code - src\types\command.ts
+- [[getCommands()]] - code - src\commands.ts
+- [[getCompanion()]] - code - src\buddy\companion.ts
+- [[getCompanionIntroAttachment()]] - code - src\buddy\prompt.ts
+- [[getDynamicSkills()]] - code - src\skills\loadSkillsDir.ts
+- [[getPromptWhileMarketplaceIsPrivate()_1]] - code - src\commands\pr_comments\index.ts
+- [[getWatchablePaths()]] - code - src\utils\skills\skillChangeDetector.ts
+- [[handleChange()_2]] - code - src\utils\skills\skillChangeDetector.ts
+- [[hasBlockingResult()]] - code - src\utils\hooks.ts
+- [[hasCommandArgs()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[hashString()_2]] - code - src\commands\buddy\buddy.tsx
+- [[hashString()]] - code - src\buddy\companion.ts
+- [[hashString()_1]] - code - src\buddy\observer.ts
+- [[help.tsx]] - code - src\commands\help\help.tsx
+- [[index.ts]] - code - src\commands\add-dir\index.ts
+- [[index.ts_1]] - code - src\commands\agents\index.ts
+- [[index.ts_3]] - code - src\commands\branch\index.ts
+- [[index.ts_5]] - code - src\commands\btw\index.ts
+- [[index.ts_6]] - code - src\commands\buddy\index.ts
+- [[index.ts_8]] - code - src\commands\cacheStats\index.ts
+- [[index.ts_9]] - code - src\commands\chrome\index.ts
+- [[index.ts_10]] - code - src\commands\clear\index.ts
+- [[index.ts_11]] - code - src\commands\color\index.ts
+- [[index.ts_13]] - code - src\commands\config\index.ts
+- [[index.ts_14]] - code - src\commands\context\index.ts
+- [[index.ts_15]] - code - src\commands\copy\index.ts
+- [[index.ts_17]] - code - src\commands\desktop\index.ts
+- [[index.ts_18]] - code - src\commands\diff\index.ts
+- [[index.ts_20]] - code - src\commands\dream\index.ts
+- [[index.ts_22]] - code - src\commands\exit\index.ts
+- [[index.ts_23]] - code - src\commands\export\index.ts
+- [[index.ts_27]] - code - src\commands\files\index.ts
+- [[index.ts_28]] - code - src\commands\heapdump\index.ts
+- [[index.ts_29]] - code - src\commands\help\index.ts
+- [[index.ts_30]] - code - src\commands\hooks\index.ts
+- [[index.ts_31]] - code - src\commands\ide\index.ts
+- [[index.ts_33]] - code - src\commands\install-slack-app\index.ts
+- [[index.ts_35]] - code - src\commands\knowledge\index.ts
+- [[index.ts_38]] - code - src\commands\lsp\index.ts
+- [[index.ts_39]] - code - src\commands\mcp\index.ts
+- [[index.ts_40]] - code - src\commands\memory\index.ts
+- [[index.ts_41]] - code - src\commands\mobile\index.ts
+- [[index.ts_43]] - code - src\commands\onboard-github\index.ts
+- [[index.ts_44]] - code - src\commands\output-style\index.ts
+- [[index.ts_46]] - code - src\commands\permissions\index.ts
+- [[index.ts_47]] - code - src\commands\plan\index.ts
+- [[index.ts_50]] - code - src\commands\pr_comments\index.ts
+- [[index.ts_49]] - code - src\commands\provider\index.ts
+- [[index.ts_52]] - code - src\commands\release-notes\index.ts
+- [[index.ts_53]] - code - src\commands\reload-plugins\index.ts
+- [[index.ts_56]] - code - src\commands\rename\index.ts
+- [[index.ts_57]] - code - src\commands\resume\index.ts
+- [[index.ts_58]] - code - src\commands\rewind\index.ts
+- [[index.ts_59]] - code - src\commands\sandbox-toggle\index.ts
+- [[index.ts_60]] - code - src\commands\session\index.ts
+- [[index.ts_61]] - code - src\commands\skills\index.ts
+- [[index.ts_62]] - code - src\commands\stats\index.ts
+- [[index.ts_63]] - code - src\commands\status\index.ts
+- [[index.ts_64]] - code - src\commands\stickers\index.ts
+- [[index.ts_65]] - code - src\commands\tag\index.ts
+- [[index.ts_66]] - code - src\commands\tasks\index.ts
+- [[index.ts_68]] - code - src\commands\theme\index.ts
+- [[index.ts_73]] - code - src\commands\vim\index.ts
+- [[index.ts_75]] - code - src\commands\wiki\index.ts
+- [[index.tsx]] - code - src\commands\plugin\index.tsx
+- [[init-verifiers.ts]] - code - src\commands\init-verifiers.ts
+- [[initialize()_2]] - code - src\utils\skills\skillChangeDetector.ts
+- [[isBuddyEnabled()]] - code - src\buddy\feature.ts
+- [[isBuddyLive()]] - code - src\buddy\useBuddyNotification.tsx
+- [[isBuddyTeaserWindow()]] - code - src\buddy\useBuddyNotification.tsx
+- [[isCommandEnabled()]] - code - src\types\command.ts
+- [[isCommandInput()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[isCommandMetadata()]] - code - src\utils\suggestions\commandSuggestions.ts
+- [[isDescriptorFile()]] - code - src\integrations\artifactGenerator.ts
+- [[isFullscreenActive()]] - code - src\utils\fullscreen.ts
+- [[isSupportedPlatform()]] - code - src\commands\desktop\index.ts
+- [[loadDefaultExport()]] - code - src\integrations\artifactGenerator.ts
+- [[loadDescriptorModules()]] - code - src\integrations\artifactGenerator.ts
+- [[mulberry32()]] - code - src\buddy\companion.ts
+- [[normalizeLineEndings()]] - code - src\integrations\artifactGenerator.ts
+- [[observer.ts]] - code - src\buddy\observer.ts
+- [[onDynamicSkillsLoaded()]] - code - src\skills\loadSkillsDir.ts
+- [[onGrowthBookRefresh()]] - code - src\services\analytics\growthbook.ts
+- [[output-style.tsx]] - code - src\commands\output-style\output-style.tsx
+- [[pick()]] - code - src\buddy\companion.ts
+- [[pickDeterministic()_1]] - code - src\commands\buddy\buddy.tsx
+- [[pickDeterministic()]] - code - src\buddy\observer.ts
+- [[plugin.tsx]] - code - src\commands\plugin\plugin.tsx
+- [[prompt.ts]] - code - src\buddy\prompt.ts
+- [[renderFace()]] - code - src\buddy\sprites.ts
+- [[renderIntegrationArtifacts()]] - code - src\integrations\artifactGenerator.ts
+- [[renderSprite()]] - code - src\buddy\sprites.ts
+- [[resetForTesting()_1]] - code - src\utils\skills\skillChangeDetector.ts
+- [[rewind.ts]] - code - src\commands\rewind\rewind.ts
+- [[roll()]] - code - src\buddy\companion.ts
+- [[rollFrom()]] - code - src\buddy\companion.ts
+- [[rollRarity()]] - code - src\buddy\companion.ts
+- [[rollStats()]] - code - src\buddy\companion.ts
+- [[rollWithSeed()]] - code - src\buddy\companion.ts
+- [[scheduleReload()]] - code - src\utils\skills\skillChangeDetector.ts
+- [[setCompanionReaction()]] - code - src\commands\buddy\buddy.tsx
+- [[showHelp()]] - code - src\commands\buddy\buddy.tsx
+- [[skillChangeDetector.ts]] - code - src\utils\skills\skillChangeDetector.ts
+- [[skills.tsx]] - code - src\commands\skills\skills.tsx
+- [[spriteColWidth()]] - code - src\buddy\CompanionSprite.tsx
+- [[spriteFrameCount()]] - code - src\buddy\sprites.ts
+- [[sprites.ts]] - code - src\buddy\sprites.ts
+- [[stats.tsx]] - code - src\commands\stats\stats.tsx
+- [[status.tsx]] - code - src\commands\status\status.tsx
+- [[statusline.tsx]] - code - src\commands\statusline.tsx
+- [[tasks.tsx]] - code - src\commands\tasks\tasks.tsx
+- [[titleCase()]] - code - src\commands\buddy\buddy.tsx
+- [[toGeneratedValue()]] - code - src\integrations\artifactGenerator.ts
+- [[toImportIdentifier()]] - code - src\integrations\artifactGenerator.ts
+- [[types.ts_1]] - code - src\buddy\types.ts
+- [[usage.tsx]] - code - src\commands\usage\usage.tsx
+- [[useBuddyNotification.tsx]] - code - src\buddy\useBuddyNotification.tsx
+- [[useSkillsChange()]] - code - src\hooks\useSkillsChange.ts
+- [[useSkillsChange.ts]] - code - src\hooks\useSkillsChange.ts
+- [[validatePresetMetadata()]] - code - src\integrations\artifactGenerator.ts
+- [[version.ts]] - code - src\commands\version.ts
+- [[wrap()]] - code - src\buddy\CompanionSprite.tsx
+- [[writeIntegrationArtifacts()]] - code - src\integrations\artifactGenerator.ts
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Module:_commands.ts
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 102 edges to [[_COMMUNITY_Module ink.ts]]
+- 53 edges to [[_COMMUNITY_Module main.tsx]]
+- 37 edges to [[_COMMUNITY_Module log.ts]]
+- 34 edges to [[_COMMUNITY_Module REPL.tsx]]
+- 33 edges to [[_COMMUNITY_Module logForDebugging()]]
+- 31 edges to [[_COMMUNITY_Module messages.ts]]
+- 31 edges to [[_COMMUNITY_Module String()]]
+- 19 edges to [[_COMMUNITY_Module state.ts]]
+- 9 edges to [[_COMMUNITY_Module openaiShim.ts]]
+- 5 edges to [[_COMMUNITY_Module loadUserBindings.ts]]
+- 5 edges to [[_COMMUNITY_Module logError()]]
+- 5 edges to [[_COMMUNITY_Module hooks.ts]]
+- 4 edges to [[_COMMUNITY_Module client.ts]]
+- 3 edges to [[_COMMUNITY_Module prompts.ts]]
+- 3 edges to [[_COMMUNITY_Module autoDream.ts]]
+- 3 edges to [[_COMMUNITY_Module ide.ts]]
+- 2 edges to [[_COMMUNITY_Module logEvent()]]
+- 1 edge to [[_COMMUNITY_Module main()]]
+- 1 edge to [[_COMMUNITY_Module collapseReadSearch.ts]]
+- 1 edge to [[_COMMUNITY_Module Doctor.tsx]]
+- 1 edge to [[_COMMUNITY_Module wiki.tsx]]
+
+## Top bridge nodes
+- [[commands.ts]] - degree 224, connects to 19 communities
+- [[command.ts]] - degree 95, connects to 15 communities
+- [[skillChangeDetector.ts]] - degree 33, connects to 9 communities
+- [[observer.ts]] - degree 11, connects to 4 communities
+- [[useSkillsChange.ts]] - degree 11, connects to 4 communities

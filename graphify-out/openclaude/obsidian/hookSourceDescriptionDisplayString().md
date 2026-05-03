@@ -1,0 +1,18 @@
+---
+source_file: "src\utils\hooks\hooksSettings.ts"
+type: "code"
+community: "Module: hooks.ts"
+location: "L170"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_hooks.ts
+---
+
+# hookSourceDescriptionDisplayString()
+
+## Connections
+- [[ViewHookMode.tsx]] - `imports` [EXTRACTED]
+- [[hooksSettings.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_hooks.ts

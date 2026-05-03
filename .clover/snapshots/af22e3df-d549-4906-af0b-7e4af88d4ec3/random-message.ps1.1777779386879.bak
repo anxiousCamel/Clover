@@ -1,0 +1,10 @@
+param($messages = @(
+    'Olá, mundo!',
+    'Hoje é um ótimo dia.',
+    'Estou aprendendo a criar scripts em PowerShell.',
+    'PowerShell é realmente poderoso!',
+    'Acredite nas coisas boas.'
+))
+
+$randomMessage = $messages | Get-Random
+Write-Output $randomMessage

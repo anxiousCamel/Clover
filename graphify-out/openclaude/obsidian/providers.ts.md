@@ -1,0 +1,85 @@
+---
+source_file: "src\utils\model\providers.ts"
+type: "code"
+community: "Module: state.ts"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_state.ts
+---
+
+# providers.ts
+
+## Connections
+- [[CostThresholdDialog.tsx]] - `imports_from` [EXTRACTED]
+- [[CostThresholdProviderLabel.ts]] - `imports_from` [EXTRACTED]
+- [[EffortPicker.tsx]] - `imports_from` [EXTRACTED]
+- [[Feedback.tsx]] - `imports_from` [EXTRACTED]
+- [[LogoV2.tsx]] - `imports_from` [EXTRACTED]
+- [[REPL.tsx]] - `imports_from` [EXTRACTED]
+- [[Usage.tsx]] - `imports_from` [EXTRACTED]
+- [[agent.ts]] - `imports_from` [EXTRACTED]
+- [[api.ts_1]] - `imports_from` [EXTRACTED]
+- [[apiPreconnect.ts]] - `imports_from` [EXTRACTED]
+- [[attribution.ts]] - `imports_from` [EXTRACTED]
+- [[auth.ts]] - `imports_from` [EXTRACTED]
+- [[autoUpdater.ts]] - `imports_from` [EXTRACTED]
+- [[benchmark.ts_1]] - `imports_from` [EXTRACTED]
+- [[betas.ts_1]] - `imports_from` [EXTRACTED]
+- [[bootstrap.ts]] - `imports_from` [EXTRACTED]
+- [[cacheMetrics.ts]] - `imports_from` [EXTRACTED]
+- [[claudeAiLimits.ts]] - `imports_from` [EXTRACTED]
+- [[commands.ts]] - `imports_from` [EXTRACTED]
+- [[configs.ts]] - `imports_from` [EXTRACTED]
+- [[conversationRecovery.ts]] - `imports_from` [EXTRACTED]
+- [[cost-tracker.ts]] - `imports_from` [EXTRACTED]
+- [[datadog.ts]] - `imports_from` [EXTRACTED]
+- [[deprecation.ts]] - `imports_from` [EXTRACTED]
+- [[effort.ts]] - `imports_from` [EXTRACTED]
+- [[envUtils.ts]] - `imports_from` [EXTRACTED]
+- [[fastMode.ts]] - `imports_from` [EXTRACTED]
+- [[getAPIProvider()]] - `contains` [EXTRACTED]
+- [[getAPIProviderForStatsig()]] - `contains` [EXTRACTED]
+- [[getTransportKindForRoute()]] - `imports` [EXTRACTED]
+- [[http.ts]] - `imports_from` [EXTRACTED]
+- [[index.ts_72]] - `imports_from` [EXTRACTED]
+- [[index.ts_88]] - `imports_from` [EXTRACTED]
+- [[index.ts_90]] - `imports_from` [EXTRACTED]
+- [[index.ts_91]] - `imports_from` [EXTRACTED]
+- [[index.ts_85]] - `imports_from` [EXTRACTED]
+- [[interactiveHelpers.tsx]] - `imports_from` [EXTRACTED]
+- [[isCodexModel()]] - `contains` [EXTRACTED]
+- [[isEnvTruthy()_1]] - `imports` [EXTRACTED]
+- [[isFirstPartyAnthropicBaseUrl()]] - `contains` [EXTRACTED]
+- [[isGithubNativeAnthropicMode()]] - `contains` [EXTRACTED]
+- [[messages.ts_1]] - `imports_from` [EXTRACTED]
+- [[migrateLegacyOpusToCurrent.ts]] - `imports_from` [EXTRACTED]
+- [[migrateSonnet1mToSonnet45.ts]] - `imports_from` [EXTRACTED]
+- [[migrateSonnet45ToSonnet46.ts]] - `imports_from` [EXTRACTED]
+- [[minimaxModels.ts]] - `imports_from` [EXTRACTED]
+- [[model.ts]] - `imports_from` [EXTRACTED]
+- [[modelCache.ts]] - `imports_from` [EXTRACTED]
+- [[modelOptions.ts]] - `imports_from` [EXTRACTED]
+- [[modelStrings.ts]] - `imports_from` [EXTRACTED]
+- [[modelSupportOverrides.ts]] - `imports_from` [EXTRACTED]
+- [[nvidiaNimModels.ts]] - `imports_from` [EXTRACTED]
+- [[officialRegistry.ts]] - `imports_from` [EXTRACTED]
+- [[openaiModelDiscovery.ts]] - `imports_from` [EXTRACTED]
+- [[preflightChecks.tsx]] - `imports_from` [EXTRACTED]
+- [[providerConfig.ts]] - `imports_from` [EXTRACTED]
+- [[resetProToOpusDefault.ts]] - `imports_from` [EXTRACTED]
+- [[resolveActiveRouteIdFromEnv()]] - `imports` [EXTRACTED]
+- [[routeMetadata.ts]] - `imports_from` [EXTRACTED]
+- [[shouldUseCodexTransport()]] - `imports` [EXTRACTED]
+- [[status.tsx_1]] - `imports_from` [EXTRACTED]
+- [[syncCache.ts]] - `imports_from` [EXTRACTED]
+- [[system.ts]] - `imports_from` [EXTRACTED]
+- [[teammateModel.ts]] - `imports_from` [EXTRACTED]
+- [[thinking.ts]] - `imports_from` [EXTRACTED]
+- [[toolSearch.ts]] - `imports_from` [EXTRACTED]
+- [[usesAnthropicAccountFlow()]] - `contains` [EXTRACTED]
+- [[utils.ts_11]] - `imports_from` [EXTRACTED]
+- [[validateModel.ts]] - `imports_from` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_state.ts

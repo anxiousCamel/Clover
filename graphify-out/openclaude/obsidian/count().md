@@ -1,0 +1,87 @@
+---
+source_file: "src\utils\array.ts"
+type: "code"
+community: "Module: ink.ts"
+location: "L5"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_ink.ts
+---
+
+# count()
+
+## Connections
+- [[.getCurrentWindowPaneCount()]] - `calls` [INFERRED]
+- [[AgentsList.tsx]] - `imports` [EXTRACTED]
+- [[BackgroundTasksDialog.tsx]] - `imports` [EXTRACTED]
+- [[BrowseMarketplace.tsx]] - `imports` [EXTRACTED]
+- [[DiscoverPlugins.tsx]] - `imports` [EXTRACTED]
+- [[ExitWorktreeTool.ts]] - `imports` [EXTRACTED]
+- [[FileEditToolUpdatedMessage.tsx]] - `imports` [EXTRACTED]
+- [[KeybindingProviderSetup.tsx]] - `imports` [EXTRACTED]
+- [[ManageMarketplaces.tsx]] - `imports` [EXTRACTED]
+- [[ManagePlugins.tsx]] - `imports` [EXTRACTED]
+- [[MessageSelector.tsx]] - `imports` [EXTRACTED]
+- [[Passes.tsx]] - `imports` [EXTRACTED]
+- [[PromptInput.tsx]] - `imports` [EXTRACTED]
+- [[PromptInputFooterLeftSide.tsx]] - `imports` [EXTRACTED]
+- [[REPL.tsx]] - `imports` [EXTRACTED]
+- [[RemoteSessionProgress.tsx]] - `imports` [EXTRACTED]
+- [[Spinner.tsx]] - `imports` [EXTRACTED]
+- [[TaskListV2.tsx]] - `imports` [EXTRACTED]
+- [[TmuxBackend.ts]] - `imports` [EXTRACTED]
+- [[ToolSelector.tsx]] - `imports` [EXTRACTED]
+- [[UI.tsx]] - `imports` [EXTRACTED]
+- [[agenticSessionSearch()]] - `calls` [INFERRED]
+- [[agenticSessionSearch.ts]] - `imports` [EXTRACTED]
+- [[array.ts]] - `contains` [EXTRACTED]
+- [[attachments.ts_1]] - `imports` [EXTRACTED]
+- [[bashPermissions.ts]] - `imports` [EXTRACTED]
+- [[bashToolHasPermission()]] - `calls` [INFERRED]
+- [[calculateAgentStats()]] - `calls` [INFERRED]
+- [[checkPermissionsAndCallTool()]] - `calls` [INFERRED]
+- [[claude.ts_2]] - `imports` [EXTRACTED]
+- [[client.ts_1]] - `imports` [EXTRACTED]
+- [[countModelVisibleMessagesSince()]] - `calls` [INFERRED]
+- [[countToolCallsSince()]] - `calls` [INFERRED]
+- [[countToolsInMessages()]] - `calls` [INFERRED]
+- [[countWorktreeChanges()]] - `calls` [INFERRED]
+- [[diff.ts]] - `imports` [EXTRACTED]
+- [[downloadSessionFiles()]] - `calls` [INFERRED]
+- [[extractMemories.ts]] - `imports` [EXTRACTED]
+- [[filesApi.ts]] - `imports` [EXTRACTED]
+- [[formatCommandsWithinBudget()]] - `calls` [INFERRED]
+- [[getInProgressHookCount()]] - `calls` [INFERRED]
+- [[getMcpToolsCommandsAndResources()]] - `calls` [INFERRED]
+- [[getPendingCounts()]] - `calls` [INFERRED]
+- [[getPillLabel()]] - `calls` [INFERRED]
+- [[getProgressStats()]] - `calls` [INFERRED]
+- [[inProcessRunner.ts]] - `imports` [EXTRACTED]
+- [[index.ts_91]] - `imports` [EXTRACTED]
+- [[isToolSearchEnabled()]] - `calls` [INFERRED]
+- [[loadMarketplaceData()]] - `calls` [INFERRED]
+- [[loadMarketplaces()]] - `calls` [INFERRED]
+- [[main.tsx]] - `imports` [EXTRACTED]
+- [[markMessagesAsRead()]] - `calls` [INFERRED]
+- [[messages.ts_1]] - `imports` [EXTRACTED]
+- [[pillLabel.ts]] - `imports` [EXTRACTED]
+- [[prompt.ts_25]] - `imports` [EXTRACTED]
+- [[promptSuggestion.ts]] - `imports` [EXTRACTED]
+- [[query.ts]] - `imports` [EXTRACTED]
+- [[select.tsx]] - `imports` [EXTRACTED]
+- [[sessionMemory.ts]] - `imports` [EXTRACTED]
+- [[skillImprovement.ts]] - `imports` [EXTRACTED]
+- [[speculation.ts]] - `imports` [EXTRACTED]
+- [[teammateMailbox.ts]] - `imports` [EXTRACTED]
+- [[toolExecution.ts]] - `imports` [EXTRACTED]
+- [[toolSearch.ts]] - `imports` [EXTRACTED]
+- [[tryGenerateSuggestion()]] - `calls` [INFERRED]
+- [[types.ts_19]] - `imports` [EXTRACTED]
+- [[uploadSessionFiles()]] - `calls` [INFERRED]
+- [[useGlobalKeybindings.tsx]] - `imports` [EXTRACTED]
+- [[useManagePlugins.ts]] - `imports` [EXTRACTED]
+- [[waitForNextPromptOrShutdown()]] - `calls` [INFERRED]
+- [[writeRemoteEntriesToLocal()]] - `calls` [INFERRED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_ink.ts

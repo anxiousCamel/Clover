@@ -3,6 +3,7 @@
 export type {
   Config,
   ModelConfig,
+  MCPServerConfig,
 } from './config.js';
 
 export type {

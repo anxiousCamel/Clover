@@ -1,0 +1,86 @@
+---
+source_file: "src\commands\model\model.tsx"
+type: "code"
+community: "Module: openaiShim.ts"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_openaiShim.ts
+---
+
+# model.tsx
+
+## Connections
+- [[ModelPickerWrapper()]] - `contains` [EXTRACTED]
+- [[aliases.ts]] - `imports_from` [EXTRACTED]
+- [[buildRouteCatalogModelOptions()]] - `imports` [EXTRACTED]
+- [[call()_41]] - `contains` [EXTRACTED]
+- [[check1mAccess.ts]] - `imports_from` [EXTRACTED]
+- [[checkOpus1mAccess()]] - `imports` [EXTRACTED]
+- [[checkSonnet1mAccess()]] - `imports` [EXTRACTED]
+- [[clearDiscoveryCache()]] - `imports` [EXTRACTED]
+- [[clearFastModeCooldown()]] - `imports` [EXTRACTED]
+- [[command.ts]] - `imports_from` [EXTRACTED]
+- [[commands.ts]] - `imports_from` [EXTRACTED]
+- [[descriptorDiscoveryStateForResult()]] - `contains` [EXTRACTED]
+- [[descriptors.ts]] - `imports_from` [EXTRACTED]
+- [[discoverModelsForRoute()]] - `imports` [EXTRACTED]
+- [[discoverOpenAICompatibleModelOptions()]] - `imports` [EXTRACTED]
+- [[discoveryCache.ts]] - `imports_from` [EXTRACTED]
+- [[discoveryService.ts]] - `imports_from` [EXTRACTED]
+- [[effort.ts]] - `imports_from` [EXTRACTED]
+- [[extraUsage.ts]] - `imports_from` [EXTRACTED]
+- [[fastMode.ts]] - `imports_from` [EXTRACTED]
+- [[getActiveOpenAIModelOptionsCache()]] - `imports` [EXTRACTED]
+- [[getActiveProviderProfile()]] - `imports` [EXTRACTED]
+- [[getActiveRouteId()]] - `contains` [EXTRACTED]
+- [[getAdditionalModelOptionsCacheScope()]] - `imports` [EXTRACTED]
+- [[getCachedModels()]] - `imports` [EXTRACTED]
+- [[getDefaultMainLoopModelSetting()]] - `imports` [EXTRACTED]
+- [[getDiscoveryCacheKey()]] - `imports` [EXTRACTED]
+- [[getLocalOpenAICompatibleProviderLabel()]] - `imports` [EXTRACTED]
+- [[getOpenAIDiscoveryRequestOptions()]] - `contains` [EXTRACTED]
+- [[getRouteDescriptor()]] - `imports` [EXTRACTED]
+- [[haveSameModelOptions()]] - `contains` [EXTRACTED]
+- [[index.ts_85]] - `imports_from` [EXTRACTED]
+- [[isBilledAsExtraUsage()]] - `imports` [EXTRACTED]
+- [[isCacheStale()]] - `imports` [EXTRACTED]
+- [[isEssentialTrafficOnly()]] - `imports` [EXTRACTED]
+- [[isFastModeAvailable()]] - `imports` [EXTRACTED]
+- [[isFastModeEnabled()]] - `imports` [EXTRACTED]
+- [[isFastModeSupportedByModel()]] - `imports` [EXTRACTED]
+- [[isModelAllowed()]] - `imports` [EXTRACTED]
+- [[isOpus1mMergeEnabled()]] - `imports` [EXTRACTED]
+- [[legacyDiscoveryStateForOptions()]] - `contains` [EXTRACTED]
+- [[loadDescriptorDiscoveryContext()]] - `contains` [EXTRACTED]
+- [[loadModelDiscoveryContext()]] - `contains` [EXTRACTED]
+- [[logEvent()]] - `imports` [EXTRACTED]
+- [[mergeRouteCatalogEntries()]] - `imports` [EXTRACTED]
+- [[model.ts]] - `imports_from` [EXTRACTED]
+- [[modelAllowlist.ts]] - `imports_from` [EXTRACTED]
+- [[modelOptions.ts]] - `imports_from` [EXTRACTED]
+- [[openaiModelDiscovery.ts]] - `imports_from` [EXTRACTED]
+- [[parseCustomHeadersEnv()]] - `imports` [EXTRACTED]
+- [[parseDurationString()]] - `imports` [EXTRACTED]
+- [[privacyLevel.ts]] - `imports_from` [EXTRACTED]
+- [[providerConfig.ts]] - `imports_from` [EXTRACTED]
+- [[providerCustomHeaders.ts]] - `imports_from` [EXTRACTED]
+- [[providerDiscovery.ts]] - `imports_from` [EXTRACTED]
+- [[providerProfiles.ts]] - `imports_from` [EXTRACTED]
+- [[renderDefaultModelSetting()]] - `imports` [EXTRACTED]
+- [[renderModelLabel()]] - `contains` [EXTRACTED]
+- [[resolveActiveRouteIdFromEnv()]] - `imports` [EXTRACTED]
+- [[resolveProviderRequest()]] - `imports` [EXTRACTED]
+- [[resolveRouteCredentialValue()]] - `imports` [EXTRACTED]
+- [[routeCatalogOptions.ts]] - `imports_from` [EXTRACTED]
+- [[routeMetadata.ts]] - `imports_from` [EXTRACTED]
+- [[setActiveOpenAIModelOptionsCache()]] - `imports` [EXTRACTED]
+- [[shouldAutoRefreshRouteCatalog()]] - `contains` [EXTRACTED]
+- [[useAppState()]] - `imports` [EXTRACTED]
+- [[useSetAppState()]] - `imports` [EXTRACTED]
+- [[validateModel()]] - `imports` [EXTRACTED]
+- [[validateModel.ts]] - `imports_from` [EXTRACTED]
+- [[xml.ts]] - `imports_from` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_openaiShim.ts

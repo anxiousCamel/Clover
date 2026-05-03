@@ -10,6 +10,9 @@ export type IntentLabel =
   | 'list_files'
   | 'delete_file'
   | 'execute_command'
+  | 'apply_patch'
+  | 'search_files'
+  | 'grep_text'
   | 'chat'
   | 'unknown';
 
@@ -51,6 +54,27 @@ export interface ExecuteParams {
   cwd?: string;
 }
 
+/** Params for apply_patch. */
+export interface PatchParams {
+  filePath: string;
+  searchString: string;
+  replaceString: string;
+  lineRange?: { start: number; end: number };
+}
+
+/** Params for search_files. */
+export interface SearchFilesParams {
+  pattern: string;
+  maxResults?: number;
+}
+
+/** Params for grep_text. */
+export interface GrepTextParams {
+  query: string;
+  includePattern?: string;
+  caseSensitive?: boolean;
+}
+
 /** Discriminated union of extracted parameters per intent. */
 export type ExtractedParams =
   | { intent: 'write_file'; params: WriteParams }
@@ -58,6 +82,9 @@ export type ExtractedParams =
   | { intent: 'list_files'; params: ListParams }
   | { intent: 'delete_file'; params: DeleteParams }
   | { intent: 'execute_command'; params: ExecuteParams }
+  | { intent: 'apply_patch'; params: PatchParams }
+  | { intent: 'search_files'; params: SearchFilesParams }
+  | { intent: 'grep_text'; params: GrepTextParams }
   | { intent: 'chat' | 'unknown'; params: null };
 
 /** Operational context persisted between turns for a session. */

@@ -32,6 +32,7 @@ import * as ollamaClient from '../ollama/ollama.client.js';
 import * as toolRegistry from '../tools/tool-registry.js';
 import * as taskService from '../orchestrator/task.service.js';
 import { runPipeline, updateContext } from '../pipeline/index.js';
+import { telemetryBus } from '../telemetry/telemetry.bus.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,6 +51,8 @@ export interface DispatchOptions {
   onConfirmationRequired: (toolName: string, args: unknown) => Promise<boolean>;
   /** Optional AbortController — calling `.abort()` cancels the active gRPC stream. */
   signal?: AbortSignal;
+  /** Trace ID for telemetry correlation. Generated per user message by the Orchestrator. */
+  traceId?: string;
 }
 
 /** Result returned by {@link dispatch}. */
@@ -268,6 +271,7 @@ export async function dispatch(
       sessionId,
       workspacePath,
       model: request.model || 'qwen2.5-coder:14b',
+      traceId: options.traceId,
     });
 
     if (pipelineDecision.mode === 'execute' && pipelineDecision.toolName && pipelineDecision.toolArgs) {
@@ -287,7 +291,25 @@ export async function dispatch(
       }
 
       // Execute tool directly (pipeline bypasses agent allowlist)
+      const toolExecStart = Date.now();
       const toolResult = await executePipelineTool(toolName, toolArgs, workspacePath, sessionId, emit);
+      const toolExecDuration = Date.now() - toolExecStart;
+
+      // Emit tool execution telemetry
+      if (options.traceId) {
+        telemetryBus.emitEvent({
+          traceId: options.traceId,
+          stage: 'tool',
+          timestamp: toolExecStart,
+          durationMs: toolExecDuration,
+          status: toolResult.success ? 'success' : 'error',
+          metadata: {
+            toolName,
+            resultStatus: toolResult.success ? 'success' : 'error',
+            error: toolResult.error ?? undefined,
+          },
+        });
+      }
 
       emit('tool:result', {
         toolName,
@@ -363,10 +385,13 @@ export async function dispatch(
 
     // Try OpenClaude gRPC first, fall back to Ollama if unavailable
     let useOllamaFallback = false;
+    let grpcLlmStart = Date.now();
     try {
       const stream = streamComplete(agentRequest);
 
       let turnCount = 0;
+      grpcLlmStart = Date.now();
+      let grpcFirstTokenMs: number | undefined;
 
       for await (const chunk of stream) {
         // Check cancellation
@@ -376,6 +401,9 @@ export async function dispatch(
         }
 
         if (chunk.type === 'token' && chunk.token) {
+          if (grpcFirstTokenMs === undefined) {
+            grpcFirstTokenMs = Date.now() - grpcLlmStart;
+          }
           text += chunk.token;
           emit('message:token', { sessionId, token: chunk.token });
         } else if (chunk.type === 'tool_call' && chunk.toolCall) {
@@ -427,11 +455,50 @@ export async function dispatch(
             break;
           }
         } else if (chunk.type === 'usage' && chunk.usage) {
+          // Emit LLM telemetry for the gRPC stream
+          if (options.traceId) {
+            const grpcLlmDuration = Date.now() - grpcLlmStart;
+            telemetryBus.emitEvent({
+              traceId: options.traceId,
+              stage: 'llm',
+              timestamp: grpcLlmStart,
+              durationMs: grpcLlmDuration,
+              status: 'success',
+              metadata: {
+                model: agentRequest.model ?? 'unknown',
+                promptTokens: chunk.usage.inputTokens ?? 0,
+                completionTokens: chunk.usage.outputTokens ?? 0,
+                timeToFirstTokenMs: grpcFirstTokenMs,
+                totalResponseMs: grpcLlmDuration,
+                triggerStage: 'agent-loop',
+              },
+            });
+          }
           emit('message:done', { sessionId, usage: chunk.usage });
         }
       }
     } catch (grpcErr) {
       // OpenClaude unavailable — fall back to Ollama
+      // Emit LLM error telemetry
+      if (options.traceId) {
+        const grpcLlmDuration = Date.now() - grpcLlmStart;
+        telemetryBus.emitEvent({
+          traceId: options.traceId,
+          stage: 'llm',
+          timestamp: grpcLlmStart,
+          durationMs: grpcLlmDuration,
+          status: 'error',
+          metadata: {
+            model: agentRequest.model ?? 'unknown',
+            promptTokens: 0,
+            completionTokens: 0,
+            totalResponseMs: grpcLlmDuration,
+            triggerStage: 'agent-loop',
+            errorType: grpcErr instanceof Error ? grpcErr.constructor.name : 'UnknownError',
+            partialResponseLength: text.length,
+          },
+        });
+      }
       useOllamaFallback = true;
     }
 
@@ -451,12 +518,40 @@ export async function dispatch(
         // Only stream when no tools are available (pure chat).
         // When tools are present, we must buffer to parse tool calls before showing content.
         const hasTools = ollamaTools && ollamaTools.length > 0;
+        const llmStart = Date.now();
+        let llmFirstTokenMs: number | undefined;
+        const wrappedOnToken = hasTools ? undefined : (token: string) => {
+          if (llmFirstTokenMs === undefined) {
+            llmFirstTokenMs = Date.now() - llmStart;
+          }
+          emit('message:token', { sessionId, token });
+        };
         const response = await ollamaClient.chat(
           ollamaMessages,
           model,
           ollamaTools,
-          hasTools ? undefined : (token) => emit('message:token', { sessionId, token }),
+          wrappedOnToken,
         );
+        const llmDuration = Date.now() - llmStart;
+
+        // Emit LLM telemetry
+        if (options.traceId) {
+          telemetryBus.emitEvent({
+            traceId: options.traceId,
+            stage: 'llm',
+            timestamp: llmStart,
+            durationMs: llmDuration,
+            status: 'success',
+            metadata: {
+              model,
+              promptTokens: 0,
+              completionTokens: 0,
+              timeToFirstTokenMs: llmFirstTokenMs,
+              totalResponseMs: llmDuration,
+              triggerStage: 'agent-loop',
+            },
+          });
+        }
 
         // Handle tool calls
         let toolCalls = response.tool_calls || [];

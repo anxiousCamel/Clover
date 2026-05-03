@@ -22,9 +22,13 @@ import type {
   ListParams,
   DeleteParams,
   ExecuteParams,
+  PatchParams,
+  SearchFilesParams,
+  GrepTextParams,
   OperationalContext,
 } from './intent.types.js';
 import { pipelineLog } from './pipeline.logger.js';
+import { telemetryBus } from '../telemetry/telemetry.bus.js';
 
 // ---------------------------------------------------------------------------
 // Accent normalization
@@ -453,18 +457,52 @@ const NATIVE_COMMAND_MAP: Array<{ pattern: RegExp; resolve: () => string }> = [
     pattern: /^\s*pwd\s*$/i,
     resolve: () => `echo ${process.cwd()}`,
   },
+  {
+    pattern: /^\s*(clear|cls)\s*$/i,
+    resolve: () => `node -e "console.log('\\x1B[2J\\x1B[3J\\x1B[H')"`
+  },
 ];
 
-/** Extract params for execute_command. Heuristic-only. */
-export function extractExecuteParams(
+/** Extract params for execute_command. Uses LLM for natural language. */
+export async function extractExecuteParams(
   input: string,
   workspacePath: string,
-): ExecuteParams {
-  // Try to extract a quoted command
+  model: string,
+  sessionId: string,
+): Promise<ExecuteParams> {
+  const t0 = Date.now();
+  let command = '';
+
+  // 1. Try to extract a quoted command (fast path)
   const quoted = input.match(/["'`]([^"'`]+)["'`]/);
-  let command = quoted ? quoted[1] : input
-    .replace(/^(execute|run|roda|executa|rode|execute o comando|run the command)\s*/i, '')
-    .trim();
+  if (quoted) {
+    command = quoted[1];
+  } else {
+    // 2. Heuristic for simple direct commands
+    const words = input.trim().split(/\s+/);
+    const isQuestion = /^(você|voce|pode|consegue|quero|gostaria|como|por favor|vc|será|sera)/i.test(input);
+    
+    if (words.length <= 4 && !isQuestion) {
+      command = input.replace(/^(execute|run|roda|executa|rode|execute o comando|run the command)\s*/i, '').trim();
+    } else {
+      // 3. LLM extraction for conversational requests
+      const prompt = `Extract ONLY the shell/terminal command from the user request. No explanations, no markdown fences, no backticks.
+If the user is just asking a question and there is no clear command to run, output exactly: INVALID_COMMAND
+Request: ${input}
+Command:`;
+
+      try {
+        const response = await ollamaClient.chat([{ role: 'user', content: prompt }], model);
+        command = response.content.replace(/^```[a-z]*\r?\n?/i, '').replace(/```\s*$/i, '').trim();
+        
+        if (command === 'INVALID_COMMAND' || command === '') {
+          command = 'echo "Error: Could not extract a valid command from the request."';
+        }
+      } catch {
+        command = input.replace(/^(execute|run|roda|executa|rode)\s*/i, '').trim();
+      }
+    }
+  }
 
   // Replace fragile commands with native equivalents
   for (const { pattern, resolve } of NATIVE_COMMAND_MAP) {
@@ -474,7 +512,344 @@ export function extractExecuteParams(
     }
   }
 
+  pipelineLog({
+    event: 'extract:done',
+    sessionId,
+    input,
+    data: { intent: 'execute_command', command },
+    durationMs: Date.now() - t0,
+  });
+
   return { command, cwd: workspacePath };
+}
+
+// ---------------------------------------------------------------------------
+// Patch intent extraction (Req 2.5.1–2.5.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether the PatchEngine should be preferred over a full rewrite.
+ * Returns true when the edit affects less than 30% of the file.
+ *
+ * @param fileLength  Total number of lines (or characters) in the file.
+ * @param editSize    Number of lines (or characters) affected by the edit.
+ */
+export function shouldPreferPatch(fileLength: number, editSize: number): boolean {
+  if (fileLength <= 0) return false;
+  return editSize / fileLength < 0.30;
+}
+
+/**
+ * Extract a line number or line range from natural language input.
+ *
+ * Recognises patterns:
+ *   "edit line 42"           → { start: 42, end: 42 }
+ *   "lines 10-20"           → { start: 10, end: 20 }
+ *   "line 5 to 15"          → { start: 5, end: 15 }
+ *   "linha 42"              → { start: 42, end: 42 }
+ *   "linhas 10 a 20"        → { start: 10, end: 20 }
+ */
+function extractLineRange(input: string): { start: number; end: number } | undefined {
+  const normalized = stripAccents(input.toLowerCase());
+
+  // Range: "lines 10-20", "lines 10 to 20", "linhas 10 a 20", "linhas 10-20"
+  const rangeMatch = normalized.match(
+    /\b(?:lines?|linhas?)\s+(\d+)\s*(?:-|to|a|ate)\s*(\d+)\b/,
+  );
+  if (rangeMatch) {
+    const start = parseInt(rangeMatch[1], 10);
+    const end = parseInt(rangeMatch[2], 10);
+    if (start > 0 && end > 0) return { start, end };
+  }
+
+  // Single line: "line 42", "edit line 42", "linha 42"
+  const singleMatch = normalized.match(
+    /\b(?:line|linha)\s+(\d+)\b/,
+  );
+  if (singleMatch) {
+    const line = parseInt(singleMatch[1], 10);
+    if (line > 0) return { start: line, end: line };
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract search and replace strings from natural language input.
+ *
+ * Recognises patterns:
+ *   "replace X with Y"          → { search: "X", replace: "Y" }
+ *   "replace 'foo' with 'bar'"  → { search: "foo", replace: "bar" }
+ *   "change X to Y"             → { search: "X", replace: "Y" }
+ *   "substituir X por Y"        → { search: "X", replace: "Y" }
+ *   "trocar X por Y"            → { search: "X", replace: "Y" }
+ */
+function extractSearchReplace(input: string): { search: string; replace: string } | undefined {
+  const normalized = stripAccents(input);
+
+  // Quoted variants: replace 'X' with 'Y', replace "X" with "Y"
+  const quotedMatch = normalized.match(
+    /\b(?:replace|change|substituir|trocar|troque)\s+["']([^"']+)["']\s+(?:with|to|por|para)\s+["']([^"']+)["']/i,
+  );
+  if (quotedMatch) {
+    return { search: quotedMatch[1], replace: quotedMatch[2] };
+  }
+
+  // Unquoted: "replace X with Y" — capture up to the delimiter word
+  const unquotedMatch = normalized.match(
+    /\b(?:replace|change|substituir|trocar|troque)\s+(.+?)\s+(?:with|to|por|para)\s+(.+?)$/im,
+  );
+  if (unquotedMatch) {
+    return { search: unquotedMatch[1].trim(), replace: unquotedMatch[2].trim() };
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract params for apply_patch.
+ *
+ * Heuristic extraction from natural language:
+ *   - File path: explicit path in input or context lastFilePath
+ *   - Search/replace: "replace X with Y", "change X to Y"
+ *   - Line range: "edit line 42", "lines 10-20"
+ *   - "change the function name" style → extract intent, LLM fills details later
+ *
+ * Requirements: 2.5.1, 2.5.2, 2.5.3
+ */
+export function extractPatchParams(
+  input: string,
+  context: OperationalContext,
+  workspacePath: string,
+): PatchParams {
+  // 1. Resolve file path (same priority as other extractors)
+  const resolved = resolveFilePath(input, context, workspacePath);
+  const filePath = resolved.path;
+
+  // 2. Extract search/replace strings
+  const sr = extractSearchReplace(input);
+  const searchString = sr?.search ?? '';
+  const replaceString = sr?.replace ?? '';
+
+  // 3. Extract optional line range (Req 2.5.3)
+  const lineRange = extractLineRange(input);
+
+  return {
+    filePath,
+    searchString,
+    replaceString,
+    ...(lineRange ? { lineRange } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Search intent extraction (Req 4.4.1–4.4.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a glob pattern from natural language input.
+ *
+ * Recognises patterns:
+ *   "find all *.test.ts files"     -> **\/*.test.ts
+ *   "find all test files"          -> **\/*.test.*
+ *   "search for *.json files"      -> **\/*.json
+ *   "find .ts files"               -> **\/*.ts
+ *   "find all config files"        -> **\/config.*
+ */
+function extractGlobPattern(input: string): string | undefined {
+  const normalized = input.toLowerCase();
+
+  // Explicit glob/extension: "*.test.ts", "*.json", ".ts files"
+  const explicitGlob = normalized.match(/\*\.[\w.*]+/);
+  if (explicitGlob) {
+    const pattern = explicitGlob[0];
+    return pattern.startsWith('**/') ? pattern : `**/${pattern}`;
+  }
+
+  // Dot-prefixed extension: ".ts files", ".json files"
+  const dotExt = normalized.match(/\.([\w]+)\s+files?\b/);
+  if (dotExt) {
+    return `**/*.${dotExt[1]}`;
+  }
+
+  // "all test files" → "**/*.test.*"
+  if (/\ball\s+test\s+files?\b/.test(normalized)) {
+    return '**/*.test.*';
+  }
+
+  // "all X files" where X is a known type keyword
+  const typeKeyword = normalized.match(/\ball\s+([\w]+)\s+files?\b/);
+  if (typeKeyword) {
+    const keyword = typeKeyword[1];
+    const EXTENSION_MAP: Record<string, string> = {
+      typescript: 'ts',
+      javascript: 'js',
+      python: 'py',
+      json: 'json',
+      yaml: 'yaml',
+      yml: 'yml',
+      markdown: 'md',
+      css: 'css',
+      html: 'html',
+      config: 'config.*',
+      test: 'test.*',
+      spec: 'spec.*',
+    };
+    const ext = EXTENSION_MAP[keyword];
+    if (ext) {
+      return `**/*.${ext}`;
+    }
+    // Treat the keyword as a filename stem: "all config files" → "**/config.*"
+    return `**/${keyword}.*`;
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract a search query (identifier or text) from natural language input.
+ *
+ * Recognises patterns:
+ *   "search for getUserName"           -> getUserName
+ *   "where is handleClick defined"     -> handleClick
+ *   "find where processData is called" -> processData
+ *   "find 'TODO' in test files"        -> TODO
+ *   "search for function X"            -> X
+ */
+function extractSearchQuery(input: string): string | undefined {
+  // Quoted search term: "find 'TODO'", 'search for "FIXME"'
+  const quoted = input.match(/["']([^"']+)["']/);
+  if (quoted) return quoted[1];
+
+  // "where is X defined" / "where is X used"
+  const whereIs = input.match(/where\s+is\s+(\w+)\s+(?:defined|used|called|declared|implemented)/i);
+  if (whereIs) return whereIs[1];
+
+  // "where is X" (without qualifier)
+  const whereIsSimple = input.match(/where\s+is\s+(\w+)/i);
+  if (whereIsSimple) return whereIsSimple[1];
+
+  // "search for (function|class|variable|method)? X"
+  const searchFor = input.match(/search\s+for\s+(?:function\s+|class\s+|variable\s+|method\s+)?(\w+)/i);
+  if (searchFor) return searchFor[1];
+
+  // "find where X is called/used/defined"
+  const findWhere = input.match(/find\s+where\s+(\w+)\s+is/i);
+  if (findWhere) return findWhere[1];
+
+  // "grep X" / "grep for X"
+  const grep = input.match(/grep\s+(?:for\s+)?(\w+)/i);
+  if (grep) return grep[1];
+
+  return undefined;
+}
+
+/**
+ * Extract an include pattern for combined searches.
+ *
+ * Recognises patterns:
+ *   "find TODO in test files"       -> **\/*.test.*
+ *   "find TODO in *.ts files"       -> **\/*.ts
+ *   "search for X in python files"  -> **\/*.py
+ */
+function extractIncludePattern(input: string): string | undefined {
+  const normalized = input.toLowerCase();
+
+  // "in *.ext files" or "in .ext files"
+  const inGlob = normalized.match(/\bin\s+(\*\.[\w.*]+)\s*files?\b/);
+  if (inGlob) {
+    const pattern = inGlob[1];
+    return pattern.startsWith('**/') ? pattern : `**/${pattern}`;
+  }
+
+  const inDotExt = normalized.match(/\bin\s+\.([\w]+)\s*files?\b/);
+  if (inDotExt) {
+    return `**/*.${inDotExt[1]}`;
+  }
+
+  // "in test files" → "**/*.test.*"
+  if (/\bin\s+test\s+files?\b/.test(normalized)) {
+    return '**/*.test.*';
+  }
+
+  // "in X files" where X is a known type keyword
+  const inType = normalized.match(/\bin\s+([\w]+)\s+files?\b/);
+  if (inType) {
+    const keyword = inType[1];
+    const EXTENSION_MAP: Record<string, string> = {
+      typescript: 'ts',
+      javascript: 'js',
+      python: 'py',
+      json: 'json',
+      yaml: 'yaml',
+      yml: 'yml',
+      markdown: 'md',
+      css: 'css',
+      html: 'html',
+      config: 'config.*',
+      test: 'test.*',
+      spec: 'spec.*',
+    };
+    const ext = EXTENSION_MAP[keyword];
+    if (ext) {
+      return `**/*.${ext}`;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Determine whether the input is a combined search (content + file pattern).
+ *
+ * Combined searches like "find TODO in test files" should route to grep_text
+ * with both `query` and `includePattern`.
+ */
+function isCombinedSearch(input: string): boolean {
+  const normalized = input.toLowerCase();
+  // Pattern: "find/search X in Y files"
+  return /\b(?:find|search)\s+.+\s+in\s+\S+\s*files?\b/i.test(normalized);
+}
+
+/**
+ * Extract params for search_files. Heuristic-only — no LLM needed.
+ *
+ * Requirements: 4.4.1, 4.4.2
+ */
+export function extractSearchFilesParams(
+  input: string,
+): SearchFilesParams {
+  const pattern = extractGlobPattern(input) ?? '**/*';
+
+  // Extract optional maxResults
+  const maxMatch = input.match(/\b(?:max|limit|top)\s*[=:]\s*(\d+)/i);
+  const maxResults = maxMatch ? parseInt(maxMatch[1], 10) : undefined;
+
+  return {
+    pattern,
+    ...(maxResults ? { maxResults } : {}),
+  };
+}
+
+/**
+ * Extract params for grep_text. Heuristic-only — no LLM needed.
+ *
+ * Requirements: 4.4.1, 4.4.3, 4.4.4
+ */
+export function extractGrepTextParams(
+  input: string,
+): GrepTextParams {
+  const query = extractSearchQuery(input) ?? '';
+  const includePattern = extractIncludePattern(input);
+
+  // Check for explicit case-sensitive flag
+  const caseSensitive = /\bcase[- ]?sensitive\b/i.test(input) ? true : undefined;
+
+  return {
+    query,
+    ...(includePattern ? { includePattern } : {}),
+    ...(caseSensitive !== undefined ? { caseSensitive } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -492,22 +867,70 @@ export async function extractParams(
   workspacePath: string,
   model: string,
   sessionId: string,
+  traceId?: string,
 ): Promise<ExtractedParams> {
+  const t0 = Date.now();
+  let result: ExtractedParams;
+
   switch (intent) {
     case 'write_file':
-      return {
+      result = {
         intent: 'write_file',
         params: await extractWriteParams(input, context, workspacePath, model, sessionId),
       };
+      break;
     case 'read_file':
-      return { intent: 'read_file', params: extractReadParams(input, context, workspacePath) };
+      result = { intent: 'read_file', params: extractReadParams(input, context, workspacePath) };
+      break;
     case 'list_files':
-      return { intent: 'list_files', params: extractListParams(input, context, workspacePath) };
+      result = { intent: 'list_files', params: extractListParams(input, context, workspacePath) };
+      break;
     case 'delete_file':
-      return { intent: 'delete_file', params: extractDeleteParams(input, context, workspacePath) };
+      result = { intent: 'delete_file', params: extractDeleteParams(input, context, workspacePath) };
+      break;
     case 'execute_command':
-      return { intent: 'execute_command', params: extractExecuteParams(input, workspacePath) };
+      result = { intent: 'execute_command', params: await extractExecuteParams(input, workspacePath, model, sessionId) };
+      break;
+    case 'apply_patch':
+      result = { intent: 'apply_patch', params: extractPatchParams(input, context, workspacePath) };
+      break;
+    case 'search_files':
+      result = { intent: 'search_files', params: extractSearchFilesParams(input) };
+      break;
+    case 'grep_text':
+      result = { intent: 'grep_text', params: extractGrepTextParams(input) };
+      break;
     default:
-      return { intent, params: null };
+      result = { intent, params: null };
+      break;
   }
+
+  if (traceId) {
+    const durationMs = Date.now() - t0;
+    // Determine the source tool name from the intent
+    const INTENT_TO_TOOL: Partial<Record<IntentLabel, string>> = {
+      write_file: 'write-file',
+      read_file: 'read-file',
+      list_files: 'list-files',
+      delete_file: 'delete-file',
+      execute_command: 'execute-command',
+      apply_patch: 'apply-patch',
+      search_files: 'search-files',
+      grep_text: 'grep-text',
+    };
+    telemetryBus.emitEvent({
+      traceId,
+      stage: 'extractor',
+      timestamp: t0,
+      durationMs,
+      status: 'success',
+      metadata: {
+        intent,
+        sourceTool: INTENT_TO_TOOL[intent] ?? null,
+        hasParams: result.params !== null,
+      },
+    });
+  }
+
+  return result;
 }

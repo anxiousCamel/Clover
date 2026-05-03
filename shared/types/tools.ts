@@ -17,6 +17,11 @@ export const TOOL_NAMES = {
   EXECUTE_COMMAND: 'execute-command',
   SEARCH_MEMORY: 'search-memory',
   SEARCH_ONLINE: 'search-online',
+  APPLY_PATCH: 'apply-patch',
+  SPAWN_SUBAGENT: 'spawn-subagent',
+  SEARCH_FILES: 'search-files',
+  GREP_TEXT: 'grep-text',
+  ROLLBACK_FILE: 'rollback-file',
 } as const;
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];

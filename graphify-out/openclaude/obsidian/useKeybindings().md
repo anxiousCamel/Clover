@@ -1,0 +1,88 @@
+---
+source_file: "src\keybindings\useKeybinding.ts"
+type: "code"
+community: "Module: ink.ts"
+location: "L113"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_ink.ts
+---
+
+# useKeybindings()
+
+## Connections
+- [[ApiKeyStep()]] - `calls` [INFERRED]
+- [[ApiKeyStep.tsx]] - `imports` [EXTRACTED]
+- [[AskUserQuestionPermissionRequest.tsx]] - `imports` [EXTRACTED]
+- [[AskUserQuestionPermissionRequestBody()]] - `calls` [INFERRED]
+- [[AsyncAgentDetailDialog()]] - `calls` [INFERRED]
+- [[AsyncAgentDetailDialog.tsx]] - `imports` [EXTRACTED]
+- [[BackgroundTasksDialog()]] - `calls` [INFERRED]
+- [[BackgroundTasksDialog.tsx]] - `imports` [EXTRACTED]
+- [[BridgeDialog()]] - `calls` [INFERRED]
+- [[BridgeDialog.tsx]] - `imports` [EXTRACTED]
+- [[BridgeDisconnectDialog()]] - `calls` [INFERRED]
+- [[BrowseMarketplace.tsx]] - `imports` [EXTRACTED]
+- [[ChooseRepoStep()]] - `calls` [INFERRED]
+- [[ChooseRepoStep.tsx]] - `imports` [EXTRACTED]
+- [[CommandKeybindingHandlers()]] - `calls` [INFERRED]
+- [[Config.tsx]] - `imports` [EXTRACTED]
+- [[DiffDialog()]] - `calls` [INFERRED]
+- [[DiffDialog.tsx]] - `imports` [EXTRACTED]
+- [[DiscoverPlugins()]] - `calls` [INFERRED]
+- [[DiscoverPlugins.tsx]] - `imports` [EXTRACTED]
+- [[Doctor()]] - `calls` [INFERRED]
+- [[Doctor.tsx]] - `imports` [EXTRACTED]
+- [[DreamDetailDialog.tsx]] - `imports` [EXTRACTED]
+- [[ErrorsTabContent()]] - `calls` [INFERRED]
+- [[FastModePicker()]] - `calls` [INFERRED]
+- [[IdeOnboardingDialog()]] - `calls` [INFERRED]
+- [[IdeOnboardingDialog.tsx]] - `imports` [EXTRACTED]
+- [[InProcessTeammateDetailDialog()]] - `calls` [INFERRED]
+- [[InProcessTeammateDetailDialog.tsx]] - `imports` [EXTRACTED]
+- [[MCPListPanel()]] - `calls` [INFERRED]
+- [[MCPListPanel.tsx]] - `imports` [EXTRACTED]
+- [[ManageMarketplaces.tsx]] - `imports` [EXTRACTED]
+- [[ManagePlugins()]] - `calls` [INFERRED]
+- [[ManagePlugins.tsx]] - `imports` [EXTRACTED]
+- [[MessageActionsKeybindings()]] - `calls` [INFERRED]
+- [[MessageSelector()]] - `calls` [INFERRED]
+- [[MessageSelector.tsx]] - `imports` [EXTRACTED]
+- [[ModelPicker.tsx]] - `imports` [EXTRACTED]
+- [[Onboarding.tsx]] - `imports` [EXTRACTED]
+- [[PermissionPrompt()]] - `calls` [INFERRED]
+- [[PermissionPrompt.tsx]] - `imports` [EXTRACTED]
+- [[PluginOptionsDialog()]] - `calls` [INFERRED]
+- [[PluginOptionsDialog.tsx]] - `imports` [EXTRACTED]
+- [[PluginSettings.tsx]] - `imports` [EXTRACTED]
+- [[PreviewQuestionView()]] - `calls` [INFERRED]
+- [[PreviewQuestionView.tsx]] - `imports` [EXTRACTED]
+- [[PromptInput.tsx]] - `imports` [EXTRACTED]
+- [[SandboxSettings.tsx]] - `imports` [EXTRACTED]
+- [[ScrollKeybindingHandler()]] - `calls` [INFERRED]
+- [[ScrollKeybindingHandler.tsx]] - `imports` [EXTRACTED]
+- [[ShellDetailDialog()]] - `calls` [INFERRED]
+- [[ShellDetailDialog.tsx]] - `imports` [EXTRACTED]
+- [[Tabs()]] - `calls` [INFERRED]
+- [[Tabs.tsx]] - `imports` [EXTRACTED]
+- [[TeamsDialog.tsx]] - `imports` [EXTRACTED]
+- [[bridge.tsx]] - `imports` [EXTRACTED]
+- [[fast.tsx]] - `imports` [EXTRACTED]
+- [[messageActions.tsx]] - `imports` [EXTRACTED]
+- [[select-input-option.tsx]] - `imports` [EXTRACTED]
+- [[use-select-input.ts]] - `imports` [EXTRACTED]
+- [[useCommandKeybindings.tsx]] - `imports` [EXTRACTED]
+- [[useExitOnCtrlCDWithKeybindings.ts]] - `imports` [EXTRACTED]
+- [[useFilePermissionDialog()]] - `calls` [INFERRED]
+- [[useFilePermissionDialog.ts]] - `imports` [EXTRACTED]
+- [[useHistorySearch()]] - `calls` [INFERRED]
+- [[useHistorySearch.ts]] - `imports` [EXTRACTED]
+- [[useInput()]] - `calls` [INFERRED]
+- [[useKeybinding.ts]] - `contains` [EXTRACTED]
+- [[useOptionalKeybindingContext()]] - `calls` [INFERRED]
+- [[useSelectInput()]] - `calls` [INFERRED]
+- [[useTypeahead()]] - `calls` [INFERRED]
+- [[useTypeahead.tsx]] - `imports` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_ink.ts

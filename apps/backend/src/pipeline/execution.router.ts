@@ -16,6 +16,31 @@
 import type { IntentLabel, ExtractedParams, PipelineDecision, ClassifyResult } from './intent.types.js';
 import { validatePath } from './param.extractor.js';
 import { pipelineLog } from './pipeline.logger.js';
+import { telemetryBus } from '../telemetry/telemetry.bus.js';
+import type { MCPConnector } from '../mcp/connector.js';
+
+// ---------------------------------------------------------------------------
+// MCP Connector injection (set at boot time)
+// ---------------------------------------------------------------------------
+
+let mcpConnector: MCPConnector | null = null;
+
+/**
+ * Inject the MCP connector instance. Called once during Clover boot
+ * after `MCPConnector.connectAll()` completes.
+ */
+export function setMCPConnector(connector: MCPConnector): void {
+  mcpConnector = connector;
+}
+
+/**
+ * Retrieve the current MCP connector (if any). Used by the agent engine
+ * or tool execution layer to check `isMCPTool()` and delegate via
+ * `callTool()` instead of local plugin execution.
+ */
+export function getMCPConnector(): MCPConnector | null {
+  return mcpConnector;
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -34,6 +59,9 @@ const INTENT_TO_TOOL: Partial<Record<IntentLabel, string>> = {
   list_files: 'list-files',
   delete_file: 'delete-file',
   execute_command: 'execute-command',
+  apply_patch: 'apply-patch',
+  search_files: 'search-files',
+  grep_text: 'grep-text',
 };
 
 // ---------------------------------------------------------------------------
@@ -103,6 +131,30 @@ function validateBeforeExecution(
     }
   }
 
+  // 6. Patch validation for apply_patch
+  if (extracted.intent === 'apply_patch') {
+    const params = extracted.params as { filePath: string; searchString: string; replaceString: string };
+    if (!params.filePath || params.filePath.trim() === '') {
+      return { valid: false, error: 'Empty file path for patch' };
+    }
+  }
+
+  // 7. Search pattern validation for search_files
+  if (extracted.intent === 'search_files') {
+    const params = extracted.params as { pattern: string };
+    if (!params.pattern || params.pattern.trim() === '') {
+      return { valid: false, error: 'Empty search pattern' };
+    }
+  }
+
+  // 8. Query validation for grep_text
+  if (extracted.intent === 'grep_text') {
+    const params = extracted.params as { query: string };
+    if (!params.query || params.query.trim() === '') {
+      return { valid: false, error: 'Empty grep query' };
+    }
+  }
+
   return { valid: true };
 }
 
@@ -122,7 +174,9 @@ export function routeExecution(
   extracted: ExtractedParams,
   classify: ClassifyResult,
   sessionId: string,
+  traceId?: string,
 ): PipelineDecision {
+  const t0 = Date.now();
   const toolName = INTENT_TO_TOOL[extracted.intent];
 
   // No matching tool → fall through to chat/agent
@@ -132,6 +186,16 @@ export function routeExecution(
       sessionId,
       data: { intent: extracted.intent, reason: 'no_tool_mapping' },
     });
+    if (traceId) {
+      telemetryBus.emitEvent({
+        traceId,
+        stage: 'router',
+        timestamp: t0,
+        durationMs: Date.now() - t0,
+        status: 'success',
+        metadata: { intent: extracted.intent, routedTool: null, reason: 'no_tool_mapping' },
+      });
+    }
     return { mode: 'chat', classify };
   }
 
@@ -148,6 +212,21 @@ export function routeExecution(
         confidence: classify.confidence,
       },
     });
+    if (traceId) {
+      telemetryBus.emitEvent({
+        traceId,
+        stage: 'router',
+        timestamp: t0,
+        durationMs: Date.now() - t0,
+        status: 'error',
+        metadata: {
+          intent: extracted.intent,
+          routedTool: toolName,
+          permissionResult: 'validation_failed',
+          error: validation.error,
+        },
+      });
+    }
     // Return chat mode with the validation error — the agent can inform the user
     return {
       mode: 'chat',
@@ -168,6 +247,21 @@ export function routeExecution(
     sessionId,
     data: { intent: extracted.intent, tool: toolName, args: toolArgs },
   });
+
+  if (traceId) {
+    telemetryBus.emitEvent({
+      traceId,
+      stage: 'router',
+      timestamp: t0,
+      durationMs: Date.now() - t0,
+      status: 'success',
+      metadata: {
+        intent: extracted.intent,
+        routedTool: toolName,
+        permissionResult: 'allowed',
+      },
+    });
+  }
 
   return {
     mode: 'execute',
@@ -196,6 +290,27 @@ function buildToolArgs(extracted: ExtractedParams): Record<string, unknown> {
       return {
         command: extracted.params.command,
         ...(extracted.params.cwd ? { cwd: extracted.params.cwd } : {}),
+      };
+
+    case 'apply_patch':
+      return {
+        filePath: extracted.params.filePath,
+        searchString: extracted.params.searchString,
+        replaceString: extracted.params.replaceString,
+        ...(extracted.params.lineRange ? { lineRange: extracted.params.lineRange } : {}),
+      };
+
+    case 'search_files':
+      return {
+        pattern: extracted.params.pattern,
+        ...(extracted.params.maxResults !== undefined ? { maxResults: extracted.params.maxResults } : {}),
+      };
+
+    case 'grep_text':
+      return {
+        query: extracted.params.query,
+        ...(extracted.params.includePattern ? { includePattern: extracted.params.includePattern } : {}),
+        ...(extracted.params.caseSensitive !== undefined ? { caseSensitive: extracted.params.caseSensitive } : {}),
       };
 
     default:

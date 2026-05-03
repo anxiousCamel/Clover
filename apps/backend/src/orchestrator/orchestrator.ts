@@ -12,6 +12,7 @@
  */
 
 import type { CompletionRequest, Message, Tool } from '@clover/shared';
+import { randomUUID } from 'node:crypto';
 import * as sessionManager from './session.manager.js';
 import * as memoryService from '../memory/memory.service.js';
 import * as agentEngine from '../agents/agent-engine.js';
@@ -19,6 +20,9 @@ import type { DispatchOptions, DispatchResult, EmitFn } from '../agents/agent-en
 import * as toolRegistry from '../tools/tool-registry.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { z } from 'zod';
+import type { SubagentContext } from './subagent-context.js';
+import { resetDepth, decrementDepth } from '../tools/plugins/spawn-subagent.tool.js';
+import { telemetryBus } from '../telemetry/telemetry.bus.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +62,16 @@ const DEFAULT_SYSTEM_PROMPT =
 const DEFAULT_TOP_K = 5;
 
 // ---------------------------------------------------------------------------
+// Active subagent tracking
+// ---------------------------------------------------------------------------
+
+/**
+ * Module-level map tracking active subagent contexts keyed by subagent ID.
+ * Entries are added on spawn and removed on completion or failure.
+ */
+const activeSubagents = new Map<string, SubagentContext>();
+
+// ---------------------------------------------------------------------------
 // Core
 // ---------------------------------------------------------------------------
 
@@ -88,6 +102,12 @@ export async function handle(
   options: HandleOptions,
 ): Promise<HandleResult> {
   const { workspacePath, emit, signal } = options;
+
+  // ── 0. Generate traceId for telemetry correlation ───────
+  const traceId = randomUUID();
+
+  // ── 0b. Reset subagent depth for new top-level messages ─
+  resetDepth(sessionId);
 
   // ── 1. Load conversation history ────────────────────────
   const history = sessionManager.loadHistory(sessionId);
@@ -130,6 +150,7 @@ export async function handle(
     workspacePath,
     emit,
     signal,
+    traceId,
   };
 
   const result: DispatchResult = await agentEngine.dispatch(
@@ -157,6 +178,158 @@ export async function handle(
     text: result.text,
     cancelled: result.cancelled,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Subagent execution
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute a subagent through the full pipeline.
+ *
+ * The subagent runs the same dispatch cycle as a normal user message but
+ * with its own isolated chat history and optional system prompt. The
+ * parent agent awaits this call, so execution is sequential.
+ *
+ * On completion the subagent's status and result are updated in-place,
+ * the depth counter is decremented, and the subagent is removed from
+ * the active tracking map.
+ *
+ * @param subCtx  - The isolated subagent context created by the spawn tool.
+ * @param options - Workspace path, emit callback, and optional abort signal.
+ * @returns A {@link HandleResult} with the agent name, response text, and
+ *          cancellation flag.
+ */
+export async function handleSubagent(
+  subCtx: SubagentContext,
+  options: HandleOptions,
+): Promise<HandleResult> {
+  const { workspacePath, emit, signal } = options;
+
+  // Track the subagent
+  activeSubagents.set(subCtx.id, subCtx);
+
+  try {
+    // Build messages: optional system prompt + the goal as a user message
+    const messages: Message[] = [];
+
+    if (subCtx.systemPrompt) {
+      messages.push({ role: 'system', content: subCtx.systemPrompt });
+    } else {
+      messages.push({ role: 'system', content: DEFAULT_SYSTEM_PROMPT });
+    }
+
+    // Include any existing chat history (for multi-turn subagent conversations)
+    messages.push(...subCtx.chatHistory);
+
+    // The goal becomes the user message
+    const goalMsg: Message = { role: 'user', content: subCtx.goal };
+    messages.push(goalMsg);
+
+    // Gather the same tool set available to the parent
+    const tools = buildToolList();
+
+    const request: CompletionRequest = {
+      messages,
+      tools,
+      stream: true,
+    };
+
+    // Dispatch through the agent engine (same pipeline as a normal message)
+    const dispatchOptions: DispatchOptions = {
+      workspacePath,
+      emit,
+      signal,
+    };
+
+    const result: DispatchResult = await agentEngine.dispatch(
+      request,
+      subCtx.parentSessionId,
+      dispatchOptions,
+    );
+
+    // Update the subagent context with the result
+    subCtx.status = result.cancelled ? 'failed' : 'completed';
+    subCtx.result = result.text;
+
+    // Persist the goal and response in the subagent's own chat history
+    subCtx.chatHistory.push(goalMsg);
+    if (result.text) {
+      subCtx.chatHistory.push({ role: 'assistant', content: result.text });
+    }
+
+    // ── Emit UI visibility events on completion ───────────
+    if (result.cancelled) {
+      emit('subagent:failed', {
+        subagentId: subCtx.id,
+        parentSessionId: subCtx.parentSessionId,
+        goal: subCtx.goal,
+        error: 'Subagent execution was cancelled',
+        depth: subCtx.depth,
+      });
+      emit('subagent:status', {
+        subagentId: subCtx.id,
+        status: 'failed',
+        depth: subCtx.depth,
+      });
+    } else {
+      emit('subagent:complete', {
+        subagentId: subCtx.id,
+        parentSessionId: subCtx.parentSessionId,
+        goal: subCtx.goal,
+        result: result.text,
+        depth: subCtx.depth,
+      });
+      emit('subagent:status', {
+        subagentId: subCtx.id,
+        status: 'completed',
+        depth: subCtx.depth,
+      });
+    }
+
+    return {
+      agent: result.agent,
+      text: result.text,
+      cancelled: result.cancelled,
+    };
+  } catch (error: unknown) {
+    // Mark the subagent as failed
+    subCtx.status = 'failed';
+    subCtx.result =
+      error instanceof Error ? error.message : 'Subagent execution failed';
+
+    // ── Emit UI visibility events on failure ──────────────
+    const errorMessage =
+      error instanceof Error ? error.message : 'Subagent execution failed';
+
+    emit('subagent:failed', {
+      subagentId: subCtx.id,
+      parentSessionId: subCtx.parentSessionId,
+      goal: subCtx.goal,
+      error: errorMessage,
+      depth: subCtx.depth,
+    });
+    emit('subagent:status', {
+      subagentId: subCtx.id,
+      status: 'failed',
+      depth: subCtx.depth,
+    });
+
+    throw error;
+  } finally {
+    // Decrement the depth counter so the session can spawn again at this level
+    decrementDepth(subCtx.parentSessionId);
+
+    // Remove from active tracking
+    activeSubagents.delete(subCtx.id);
+  }
+}
+
+/**
+ * Return the active subagent context for a given subagent ID, or undefined.
+ */
+export function getActiveSubagent(subagentId: string): SubagentContext | undefined {
+  return activeSubagents.get(subagentId);
 }
 
 // ---------------------------------------------------------------------------

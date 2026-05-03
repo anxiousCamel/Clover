@@ -32,6 +32,9 @@ import {
   listTools,
   getPlugin,
   execute,
+  registerExternal,
+  unregisterByPrefix,
+  isExternal,
   ToolNotFoundError,
   ToolValidationError,
 } from '../tool-registry.js';
@@ -426,6 +429,99 @@ describe('Tool Registry', () => {
 
       // Confirmation should never be reached if validation fails
       expect(mockConfirmationRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  // ========================================================================
+  // External tool management — registerExternal, unregisterByPrefix, isExternal
+  // Req 1.3.3, 1.3.6, 1.6.1, 1.6.2
+  // ========================================================================
+
+  describe('registerExternal (Req 1.3.3, 1.3.6)', () => {
+    it('should add the plugin to listTools output', () => {
+      const plugin = makeFakePlugin({ name: 'github:create_issue' });
+
+      registerExternal(plugin);
+
+      expect(listTools()).toContain('github:create_issue');
+    });
+
+    it('should make the plugin retrievable via getPlugin', () => {
+      const plugin = makeFakePlugin({ name: 'github:list_repos' });
+
+      registerExternal(plugin);
+
+      expect(getPlugin('github:list_repos')).toBe(plugin);
+    });
+
+    it('should mark the tool as external', () => {
+      const plugin = makeFakePlugin({ name: 'postgres:query' });
+
+      registerExternal(plugin);
+
+      expect(isExternal('postgres:query')).toBe(true);
+    });
+  });
+
+  describe('isExternal (Req 1.3.6)', () => {
+    it('should return false for tools not registered externally', () => {
+      expect(isExternal('nonexistent-tool')).toBe(false);
+    });
+
+    it('should return false for built-in tools loaded via loadPlugins', () => {
+      // Built-in tools are loaded via loadPlugins, not registerExternal
+      // Since loadPlugins is mocked to return no files, we just verify
+      // that a tool name not in the external set returns false
+      expect(isExternal('read-file')).toBe(false);
+    });
+  });
+
+  describe('unregisterByPrefix (Req 1.6.1, 1.6.2)', () => {
+    it('should remove all tools with the given prefix from listTools', () => {
+      registerExternal(makeFakePlugin({ name: 'github:create_issue' }));
+      registerExternal(makeFakePlugin({ name: 'github:list_repos' }));
+      registerExternal(makeFakePlugin({ name: 'postgres:query' }));
+
+      unregisterByPrefix('github');
+
+      const tools = listTools();
+      expect(tools).not.toContain('github:create_issue');
+      expect(tools).not.toContain('github:list_repos');
+      expect(tools).toContain('postgres:query');
+    });
+
+    it('should remove tools from the external tracking set', () => {
+      registerExternal(makeFakePlugin({ name: 'slack:send_message' }));
+
+      unregisterByPrefix('slack');
+
+      expect(isExternal('slack:send_message')).toBe(false);
+    });
+
+    it('should make unregistered tools unavailable via getPlugin', () => {
+      registerExternal(makeFakePlugin({ name: 'jira:create_ticket' }));
+
+      unregisterByPrefix('jira');
+
+      expect(getPlugin('jira:create_ticket')).toBeUndefined();
+    });
+
+    it('should not affect tools from other prefixes', () => {
+      registerExternal(makeFakePlugin({ name: 'github:pr' }));
+      registerExternal(makeFakePlugin({ name: 'gitlab:mr' }));
+
+      unregisterByPrefix('github');
+
+      expect(isExternal('gitlab:mr')).toBe(true);
+      expect(getPlugin('gitlab:mr')).toBeDefined();
+    });
+
+    it('should be a no-op when no tools match the prefix', () => {
+      const before = listTools().length;
+
+      unregisterByPrefix('nonexistent');
+
+      expect(listTools().length).toBe(before);
     });
   });
 });

@@ -1,0 +1,19 @@
+---
+source_file: "src\tools\FileEditTool\utils.ts"
+type: "code"
+community: "Module: main.tsx"
+location: "L138"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_main.tsx
+---
+
+# isOpeningContext()
+
+## Connections
+- [[applyCurlyDoubleQuotes()]] - `calls` [EXTRACTED]
+- [[applyCurlySingleQuotes()]] - `calls` [EXTRACTED]
+- [[utils.ts_10]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_main.tsx

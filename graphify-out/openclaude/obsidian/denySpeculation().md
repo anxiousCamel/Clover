@@ -1,0 +1,17 @@
+---
+source_file: "src\services\PromptSuggestion\speculation.ts"
+type: "code"
+community: "Module: logForDebugging()"
+location: "L84"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_logForDebugging()
+---
+
+# denySpeculation()
+
+## Connections
+- [[speculation.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_logForDebugging()

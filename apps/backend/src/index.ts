@@ -33,12 +33,15 @@ import * as wsServer from './gateway/ws.server.js';
 import { app, start as startHttp, stop as stopHttp } from './gateway/http.server.js';
 import * as vaultWatcher from './memory/vault.watcher.js';
 import * as taskService from './orchestrator/task.service.js';
+import { MCPConnector } from './mcp/connector.js';
+import { setMCPConnector } from './pipeline/execution.router.js';
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 let sqliteStore: SQLiteStore | undefined;
+let mcpConnector: MCPConnector | undefined;
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -75,6 +78,21 @@ async function boot(): Promise<void> {
   // ── 5. Tool plugins ─────────────────────────────────────────────────
   await toolRegistry.loadPlugins();
   console.log(`[boot] Tool registry loaded (${toolRegistry.listTools().length} plugins)`);
+
+  // ── 5b. MCP servers (non-blocking) ───────────────────────────────────
+  if (config.mcpServers && config.mcpServers.length > 0) {
+    try {
+      mcpConnector = new MCPConnector();
+      await mcpConnector.connectAll(config.mcpServers);
+      setMCPConnector(mcpConnector);
+      console.log(`[boot] MCP connector initialised (${config.mcpServers.length} server(s) configured)`);
+    } catch (err) {
+      console.error('[boot] MCP connector failed to initialise (non-fatal):', err);
+      // Server continues without MCP — tools from MCP servers won't be available
+    }
+  } else {
+    console.log('[boot] MCP connector skipped (no mcpServers configured)');
+  }
 
   // ── 6. Agent engine ─────────────────────────────────────────────────
   await agentEngine.loadAgents();
@@ -113,6 +131,16 @@ async function shutdown(): Promise<void> {
   // Stop accepting new vault events
   vaultWatcher.stop();
   console.log('[shutdown] Vault watcher stopped');
+
+  // Disconnect MCP servers (before gateway closes so in-flight calls can finish)
+  if (mcpConnector) {
+    try {
+      await mcpConnector.disconnectAll();
+      console.log('[shutdown] MCP connections closed');
+    } catch (err) {
+      console.error('[shutdown] Error closing MCP connections:', err);
+    }
+  }
 
   // Close HTTP + WS gateway (drains in-flight connections)
   await stopHttp();

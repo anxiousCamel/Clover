@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { ToolPlugin, ToolContext, ToolResult } from '@clover/shared';
 import * as confirmationBus from '../confirmation/confirmation.bus.js';
 import { randomUUID } from 'node:crypto';
+import { telemetryBus } from '../telemetry/telemetry.bus.js';
 
 // ---------------------------------------------------------------------------
 // Error classes
@@ -41,6 +42,9 @@ export class ToolValidationError extends Error {
 // ---------------------------------------------------------------------------
 
 const plugins = new Map<string, ToolPlugin>();
+
+/** Tracks tool names registered via `registerExternal` (e.g., MCP tools). */
+const externalTools = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // Plugin loading
@@ -88,6 +92,48 @@ export function getPlugin(name: string): ToolPlugin | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// External tool management (MCP)
+// ---------------------------------------------------------------------------
+
+/**
+ * Register an externally-provided tool (e.g., from an MCP server).
+ *
+ * The plugin is added to the main `plugins` map so it appears in
+ * `listTools()` and can be executed via `execute()`. It is also tracked
+ * in the `externalTools` set so it can be bulk-removed when its
+ * originating server disconnects.
+ */
+export function registerExternal(plugin: ToolPlugin): void {
+  plugins.set(plugin.name, plugin);
+  externalTools.add(plugin.name);
+}
+
+/**
+ * Unregister all tools whose name starts with `prefix:`.
+ *
+ * Used when an MCP server disconnects — removes every tool that was
+ * registered under that server's namespace from both the plugin map
+ * and the external tracking set.
+ */
+export function unregisterByPrefix(prefix: string): void {
+  const fullPrefix = `${prefix}:`;
+  for (const name of [...plugins.keys()]) {
+    if (name.startsWith(fullPrefix)) {
+      plugins.delete(name);
+      externalTools.delete(name);
+    }
+  }
+}
+
+/**
+ * Check whether a tool was registered externally (e.g., via MCP)
+ * rather than loaded from the built-in plugins directory.
+ */
+export function isExternal(name: string): boolean {
+  return externalTools.has(name);
+}
+
+// ---------------------------------------------------------------------------
 // Execution
 // ---------------------------------------------------------------------------
 
@@ -104,7 +150,9 @@ export async function execute(
   name: string,
   args: unknown,
   ctx: ToolContext,
+  traceId?: string,
 ): Promise<ToolResult> {
+  const t0 = Date.now();
   const plugin = plugins.get(name);
   if (!plugin) {
     throw new ToolNotFoundError(name);
@@ -142,5 +190,44 @@ export async function execute(
   }
 
   // --- Execute ---
-  return plugin.execute(args, ctx);
+  try {
+    const result = await plugin.execute(args, ctx);
+    const durationMs = Date.now() - t0;
+
+    if (traceId) {
+      telemetryBus.emitEvent({
+        traceId,
+        stage: 'tool',
+        timestamp: t0,
+        durationMs,
+        status: result.success ? 'success' : 'error',
+        metadata: {
+          toolName: name,
+          resultStatus: result.success ? 'success' : 'error',
+          error: result.error ?? undefined,
+        },
+      });
+    }
+
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+
+    if (traceId) {
+      telemetryBus.emitEvent({
+        traceId,
+        stage: 'tool',
+        timestamp: t0,
+        durationMs,
+        status: 'error',
+        metadata: {
+          toolName: name,
+          resultStatus: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+
+    throw err;
+  }
 }

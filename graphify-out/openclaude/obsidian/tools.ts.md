@@ -1,0 +1,88 @@
+---
+source_file: "src\tools.ts"
+type: "code"
+community: "Module: logForDebugging()"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_logForDebugging()
+---
+
+# tools.ts
+
+## Connections
+- [[AgentTool.tsx]] - `imports_from` [EXTRACTED]
+- [[AsyncAgentDetailDialog.tsx]] - `imports_from` [EXTRACTED]
+- [[BriefTool.ts]] - `imports_from` [EXTRACTED]
+- [[EnterPlanModeTool.ts]] - `imports_from` [EXTRACTED]
+- [[EnterWorktreeTool.ts]] - `imports_from` [EXTRACTED]
+- [[ExitPlanModeV2Tool.ts]] - `imports_from` [EXTRACTED]
+- [[ExitWorktreeTool.ts]] - `imports_from` [EXTRACTED]
+- [[FileEditTool.ts]] - `imports_from` [EXTRACTED]
+- [[FileReadTool.ts]] - `imports_from` [EXTRACTED]
+- [[FileWriteTool.ts]] - `imports_from` [EXTRACTED]
+- [[GlobTool.ts]] - `imports_from` [EXTRACTED]
+- [[GrepTool.ts]] - `imports_from` [EXTRACTED]
+- [[InProcessTeammateDetailDialog.tsx]] - `imports_from` [EXTRACTED]
+- [[LSPTool.ts]] - `imports_from` [EXTRACTED]
+- [[ListMcpResourcesTool.ts]] - `imports_from` [EXTRACTED]
+- [[NotebookEditTool.ts]] - `imports_from` [EXTRACTED]
+- [[REPL.tsx]] - `imports_from` [EXTRACTED]
+- [[ReadMcpResourceTool.ts]] - `imports_from` [EXTRACTED]
+- [[SessionPreview.tsx]] - `imports_from` [EXTRACTED]
+- [[SkillTool.ts]] - `imports_from` [EXTRACTED]
+- [[SyntheticOutputTool.ts]] - `imports_from` [EXTRACTED]
+- [[TaskCreateTool.ts]] - `imports_from` [EXTRACTED]
+- [[TaskGetTool.ts]] - `imports_from` [EXTRACTED]
+- [[TaskListTool.ts]] - `imports_from` [EXTRACTED]
+- [[TaskStopTool.ts]] - `imports_from` [EXTRACTED]
+- [[TaskUpdateTool.ts]] - `imports_from` [EXTRACTED]
+- [[TodoWriteTool.ts]] - `imports_from` [EXTRACTED]
+- [[Tool.ts]] - `imports_from` [EXTRACTED]
+- [[ToolSearchTool.ts]] - `imports_from` [EXTRACTED]
+- [[WebFetchTool.ts]] - `imports_from` [EXTRACTED]
+- [[WebSearchTool.ts]] - `imports_from` [EXTRACTED]
+- [[agentSwarmsEnabled.ts]] - `imports_from` [EXTRACTED]
+- [[agents.tsx]] - `imports_from` [EXTRACTED]
+- [[assembleToolPool()]] - `contains` [EXTRACTED]
+- [[constants.ts_9]] - `imports_from` [EXTRACTED]
+- [[embeddedTools.ts]] - `imports_from` [EXTRACTED]
+- [[envUtils.ts]] - `imports_from` [EXTRACTED]
+- [[execAgentHook.ts]] - `imports_from` [EXTRACTED]
+- [[filterToolsByDenyRules()]] - `contains` [EXTRACTED]
+- [[getAllBaseTools()]] - `contains` [EXTRACTED]
+- [[getDenyRuleForTool()]] - `imports` [EXTRACTED]
+- [[getMergedTools()]] - `contains` [EXTRACTED]
+- [[getPowerShellTool()]] - `contains` [EXTRACTED]
+- [[getSendMessageTool()]] - `contains` [EXTRACTED]
+- [[getTeamCreateTool()]] - `contains` [EXTRACTED]
+- [[getTeamDeleteTool()]] - `contains` [EXTRACTED]
+- [[getTools()]] - `contains` [EXTRACTED]
+- [[getToolsForDefaultPreset()]] - `contains` [EXTRACTED]
+- [[hasEmbeddedSearchTools()]] - `imports` [EXTRACTED]
+- [[hooks.tsx]] - `imports_from` [EXTRACTED]
+- [[isAgentSwarmsEnabled()]] - `imports` [EXTRACTED]
+- [[isEnvTruthy()_1]] - `imports` [EXTRACTED]
+- [[isPowerShellToolEnabled()]] - `imports` [EXTRACTED]
+- [[isReplModeEnabled()]] - `imports` [EXTRACTED]
+- [[isTodoV2Enabled()]] - `imports` [EXTRACTED]
+- [[isToolSearchEnabledOptimistic()]] - `imports` [EXTRACTED]
+- [[isWorktreeModeEnabled()]] - `imports` [EXTRACTED]
+- [[main.tsx]] - `imports_from` [EXTRACTED]
+- [[mcp.ts]] - `imports_from` [EXTRACTED]
+- [[parseToolPreset()]] - `contains` [EXTRACTED]
+- [[permissionSetup.ts]] - `imports_from` [EXTRACTED]
+- [[permissions.ts_2]] - `imports_from` [EXTRACTED]
+- [[resumeAgent.ts]] - `imports_from` [EXTRACTED]
+- [[server.ts]] - `imports_from` [EXTRACTED]
+- [[shellToolUtils.ts]] - `imports_from` [EXTRACTED]
+- [[tasks.ts_1]] - `imports_from` [EXTRACTED]
+- [[toolExecution.ts]] - `imports_from` [EXTRACTED]
+- [[toolMatchesName()]] - `imports` [EXTRACTED]
+- [[toolSearch.ts]] - `imports_from` [EXTRACTED]
+- [[useInboxPoller.ts]] - `imports_from` [EXTRACTED]
+- [[useMergedTools.ts]] - `imports_from` [EXTRACTED]
+- [[worktreeModeEnabled.ts]] - `imports_from` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_logForDebugging()

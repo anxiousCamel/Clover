@@ -151,6 +151,32 @@ export async function registerRoutes(): Promise<void> {
   await app.register(modelsRoutes, { prefix: '/api' });
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(plannerRoutes, { prefix: '/api' });
+
+  // Telemetry routes — conditionally registered when the telemetry
+  // store is available. The store is set via setTelemetryStore().
+  if (_telemetryStore) {
+    const { telemetryRoutes } = await import('../telemetry/telemetry.routes.js');
+    await app.register(telemetryRoutes(_telemetryStore), { prefix: '/api' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry store injection
+// ---------------------------------------------------------------------------
+
+/** Module-level reference to the initialised TelemetryStore. */
+let _telemetryStore: import('../telemetry/telemetry.store.js').TelemetryStore | null = null;
+
+/**
+ * Set the TelemetryStore instance used by the telemetry REST routes.
+ *
+ * Must be called before {@link registerRoutes} for the telemetry
+ * endpoints to be available.
+ */
+export function setTelemetryStore(
+  store: import('../telemetry/telemetry.store.js').TelemetryStore,
+): void {
+  _telemetryStore = store;
 }
 
 // ---------------------------------------------------------------------------

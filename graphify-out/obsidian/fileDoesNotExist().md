@@ -1,0 +1,17 @@
+---
+source_file: "apps\backend\src\memory\__tests__\obsidian.adapter.test.ts"
+type: "code"
+community: "Community 22"
+location: "L53"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_22
+---
+
+# fileDoesNotExist()
+
+## Connections
+- [[obsidian.adapter.test.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_22

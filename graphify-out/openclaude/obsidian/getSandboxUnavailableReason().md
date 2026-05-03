@@ -1,0 +1,20 @@
+---
+source_file: "src\utils\sandbox\sandbox-adapter.ts"
+type: "code"
+community: "Module: main.tsx"
+location: "L571"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_main.tsx
+---
+
+# getSandboxUnavailableReason()
+
+## Connections
+- [[getPlatform()]] - `calls` [INFERRED]
+- [[getSandboxEnabledSetting()]] - `calls` [EXTRACTED]
+- [[isPlatformInEnabledList()]] - `calls` [EXTRACTED]
+- [[sandbox-adapter.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_main.tsx

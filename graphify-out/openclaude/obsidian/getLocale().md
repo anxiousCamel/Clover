@@ -1,0 +1,18 @@
+---
+source_file: "src\utils\formatBriefTimestamp.ts"
+type: "code"
+community: "Module: ink.ts"
+location: "L58"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_ink.ts
+---
+
+# getLocale()
+
+## Connections
+- [[formatBriefTimestamp()]] - `calls` [EXTRACTED]
+- [[formatBriefTimestamp.ts]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_ink.ts

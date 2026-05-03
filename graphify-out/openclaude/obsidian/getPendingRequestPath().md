@@ -1,0 +1,20 @@
+---
+source_file: "src\utils\swarm\permissionSync.ts"
+type: "code"
+community: "Module: logForDebugging()"
+location: "L146"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_logForDebugging()
+---
+
+# getPendingRequestPath()
+
+## Connections
+- [[getPendingDir()]] - `calls` [EXTRACTED]
+- [[permissionSync.ts]] - `contains` [EXTRACTED]
+- [[resolvePermission()]] - `calls` [EXTRACTED]
+- [[writePermissionRequest()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_logForDebugging()

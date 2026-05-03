@@ -1,0 +1,18 @@
+---
+source_file: "src\keybindings\validate.ts"
+type: "code"
+community: "Module: loadUserBindings.ts"
+location: "L405"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Module:_loadUserBindings.ts
+---
+
+# getUserBindingsForValidation()
+
+## Connections
+- [[validate.ts]] - `contains` [EXTRACTED]
+- [[validateBindings()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Module:_loadUserBindings.ts

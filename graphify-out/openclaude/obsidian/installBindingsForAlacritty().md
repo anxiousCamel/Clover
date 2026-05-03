@@ -1,0 +1,23 @@
+---
+source_file: "src\commands\terminalSetup\terminalSetup.tsx"
+type: "code"
+community: "Module: logError()"
+location: "L373"
+tags:
+  - graphify/code
+  - graphify/INFERRED
+  - community/Module:_logError()
+---
+
+# installBindingsForAlacritty()
+
+## Connections
+- [[.readFile()]] - `calls` [INFERRED]
+- [[color()]] - `calls` [INFERRED]
+- [[formatPathLink()]] - `calls` [EXTRACTED]
+- [[isFsInaccessible()]] - `calls` [INFERRED]
+- [[logError()]] - `calls` [INFERRED]
+- [[setupTerminal()]] - `calls` [EXTRACTED]
+- [[terminalSetup.tsx]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/INFERRED #community/Module:_logError()
