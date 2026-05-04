@@ -123,13 +123,27 @@ function extractPathFromText(input: string): string | undefined {
  * Extract filename from natural language patterns like:
  *   "o arquivo teste txt" → "teste.txt"
  *   "arquivo config json" → "config.json"
+ *   "chamado teste123" → "teste123.txt"
+ *   "called notes" → "notes.txt"
  */
 function extractNaturalFilename(input: string): string | undefined {
   const normalized = stripAccents(input.toLowerCase());
-  const match = normalized.match(
+
+  // Pattern: explicit noun + name + extension ("arquivo teste txt")
+  const withExtMatch = normalized.match(
     /(?:arquivo|file|ficheiro)\s+([a-z0-9_-]+)\s+(txt|md|json|ts|js|py|csv|xml|yaml|yml|log|sh|ps1|html|css|ini|env)\b/i,
   );
-  if (match) return `${match[1]}.${match[2]}`;
+  if (withExtMatch) return `${withExtMatch[1]}.${withExtMatch[2]}`;
+
+  // Pattern: "chamado X", "called X", "nomeado X" — default to .txt if no extension
+  const namedMatch = normalized.match(
+    /(?:chamad[oa]|called|nomeado?)\s+["']?([a-z0-9_\-]+(?:\.[a-z]{1,6})?)["']?(?:\s|$)/i,
+  );
+  if (namedMatch) {
+    const name = namedMatch[1].trim();
+    return /\.[a-z]{1,6}$/i.test(name) ? name : `${name}.txt`;
+  }
+
   return undefined;
 }
 
@@ -473,28 +487,42 @@ export async function extractExecuteParams(
   const t0 = Date.now();
   let command = '';
 
-  // 1. Try to extract a quoted command (fast path)
-  const quoted = input.match(/["'`]([^"'`]+)["'`]/);
-  if (quoted) {
-    command = quoted[1];
-  } else {
-    // 2. Heuristic for simple direct commands
+  // Resolve location keyword ("área de trabalho", "desktop", etc.) for cwd and prompt context
+  const location = resolveWellKnownLocation(input);
+  const effectiveCwd = location ?? workspacePath;
+
+  // 1. Quoted command fast path — ONLY when input explicitly wraps a command in quotes
+  //    e.g. `execute "git status"` or `run "npm install"`
+  //    Skip when quotes are used to name things: `crie uma pasta chamada "portifolio"`
+  const isCommandWrapper = /^\s*(execute|run|roda|executa|rode|execute o comando|run the command|bash|sh)\s+["'`]/i.test(input);
+  if (isCommandWrapper) {
+    const quoted = input.match(/["'`]([^"'`]+)["'`]/);
+    if (quoted) command = quoted[1];
+  }
+
+  if (!command) {
+    // 2. Heuristic for simple direct commands (≤4 tokens, no question prefix, no quotes used as names)
     const words = input.trim().split(/\s+/);
     const isQuestion = /^(você|voce|pode|consegue|quero|gostaria|como|por favor|vc|será|sera)/i.test(input);
-    
-    if (words.length <= 4 && !isQuestion) {
+    const hasNamingQuote = /chamad[oa]\s*["']|called\s*["']|nomeado?\s*["']/i.test(input);
+
+    if (words.length <= 4 && !isQuestion && !hasNamingQuote) {
       command = input.replace(/^(execute|run|roda|executa|rode|execute o comando|run the command)\s*/i, '').trim();
     } else {
       // 3. LLM extraction for conversational requests
-      const prompt = `Extract ONLY the shell/terminal command from the user request. No explanations, no markdown fences, no backticks.
-If the user is just asking a question and there is no clear command to run, output exactly: INVALID_COMMAND
+      const locationHint = location
+        ? `\nTarget location: "${location}" — if the command creates or moves files/folders, use this full absolute path.`
+        : '';
+      const prompt = `Extract ONLY the PowerShell command from the user request. No explanations, no markdown fences, no backticks.
+Use PowerShell syntax (New-Item, Copy-Item, Remove-Item, Get-ChildItem, etc). Avoid Unix commands (mkdir, ls, rm).
+If the user is just asking a question and there is no clear command to run, output exactly: INVALID_COMMAND${locationHint}
 Request: ${input}
 Command:`;
 
       try {
         const response = await ollamaClient.chat([{ role: 'user', content: prompt }], model);
         command = response.content.replace(/^```[a-z]*\r?\n?/i, '').replace(/```\s*$/i, '').trim();
-        
+
         if (command === 'INVALID_COMMAND' || command === '') {
           command = 'echo "Error: Could not extract a valid command from the request."';
         }
@@ -516,11 +544,11 @@ Command:`;
     event: 'extract:done',
     sessionId,
     input,
-    data: { intent: 'execute_command', command },
+    data: { intent: 'execute_command', command, cwd: effectiveCwd },
     durationMs: Date.now() - t0,
   });
 
-  return { command, cwd: workspacePath };
+  return { command, cwd: effectiveCwd };
 }
 
 // ---------------------------------------------------------------------------

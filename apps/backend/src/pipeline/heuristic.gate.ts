@@ -118,10 +118,10 @@ function scoreDeictic(input: string): number {
   }) ? 1 : 0;
 }
 
-/** Short imperative (≤12 words, no question mark). Score 0–1. */
+/** Short imperative (≤12 words). Score 0–1. */
 function scoreImperative(input: string): number {
   const words = input.trim().split(/\s+/);
-  if (words.length <= 12 && !input.includes('?')) return 1;
+  if (words.length <= 12) return 1;
   return 0;
 }
 
