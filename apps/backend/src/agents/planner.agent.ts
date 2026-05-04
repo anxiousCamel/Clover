@@ -41,6 +41,8 @@ function matchesIntent(message: string, _context?: AgentContext): boolean {
 
 const SYSTEM_PROMPT = `You are Planner, a specialised project planning and document generation agent within the Clover AI assistant.
 
+Respond in the user's language.
+
 Your primary responsibilities:
 - Generate structured planning documents: requirements.md, design.md, and tasks.md
 - Define clear project requirements with acceptance criteria

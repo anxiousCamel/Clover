@@ -15,5 +15,6 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["types/**/*.ts", "protos/**/*.ts"]
+  "include": ["types/**/*.ts", "protos/**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

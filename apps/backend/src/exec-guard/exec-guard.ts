@@ -78,10 +78,13 @@ export function run(cmd: string, opts: RunOptions): Promise<RunResult> {
   const timeoutMs = opts.timeout ?? config.execGuard.timeoutMs;
 
   return new Promise<RunResult>((resolve, reject) => {
-    const child = spawn(cmd, {
-      shell: true,
-      cwd: resolvedCwd,
-    });
+    const isWindows = process.platform === 'win32';
+    const child = isWindows
+      ? spawn('powershell.exe', ['-NonInteractive', '-NoProfile', '-Command', cmd], {
+          cwd: resolvedCwd,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+      : spawn(cmd, { shell: true, cwd: resolvedCwd, stdio: ['ignore', 'pipe', 'pipe'] });
 
     let stdout = '';
     let stderr = '';

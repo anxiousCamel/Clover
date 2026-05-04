@@ -24,7 +24,7 @@
     "watchDebounceMs": 500
   },
   "execGuard": {
-    "timeoutMs": 30000
+    "timeoutMs": 10000
   },
   "confirmation": {
     "timeoutMs": 60000
