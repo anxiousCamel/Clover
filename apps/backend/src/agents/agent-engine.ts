@@ -105,6 +105,57 @@ const agents: Agent[] = [];
  */
 const activeControllers = new Map<string, AbortController>();
 
+/**
+ * Per-session approval cache: `sessionId → Set<argsHash>`.
+ *
+ * Once the user approves a (toolName, args) combination within a session,
+ * subsequent identical calls skip the confirmation dialog. The cache is
+ * cleared when the session ends or the user explicitly cancels.
+ *
+ * Key format: `${toolName}:${stableHash(args)}`
+ */
+const approvedOps = new Map<string, Set<string>>();
+
+/**
+ * Stable hash for a (toolName, args) pair — used as the approval cache key.
+ * Not cryptographic; just needs to be consistent within a process lifetime.
+ */
+function hashOp(toolName: string, args: unknown): string {
+  try {
+    return `${toolName}:${JSON.stringify(args)}`;
+  } catch {
+    return `${toolName}:${String(args)}`;
+  }
+}
+
+/**
+ * Wrap the caller-supplied `onConfirmationRequired` with a per-session cache.
+ *
+ * - If the op was already approved this session → return true immediately.
+ * - If the user approves → cache it, return true.
+ * - If the user denies → do NOT cache (allow re-prompt on retry), return false.
+ */
+function buildCachedConfirmation(
+  sessionId: string,
+  onConfirmationRequired: (toolName: string, args: unknown) => Promise<boolean>,
+): (toolName: string, args: unknown) => Promise<boolean> {
+  return async (toolName: string, args: unknown): Promise<boolean> => {
+    const key = hashOp(toolName, args);
+    const sessionCache = approvedOps.get(sessionId) ?? new Set<string>();
+
+    if (sessionCache.has(key)) {
+      return true; // already approved this session — skip dialog
+    }
+
+    const approved = await onConfirmationRequired(toolName, args);
+    if (approved) {
+      sessionCache.add(key);
+      approvedOps.set(sessionId, sessionCache);
+    }
+    return approved;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Agent loading & registration
 // ---------------------------------------------------------------------------
@@ -235,6 +286,8 @@ export function cancel(sessionId: string): void {
     controller.abort();
     activeControllers.delete(sessionId);
   }
+  // Clear the approval cache so a fresh session starts clean
+  approvedOps.delete(sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +307,13 @@ export async function dispatch(
   sessionId: string,
   options: DispatchOptions,
 ): Promise<DispatchResult> {
-  const { workspacePath, emit, onConfirmationRequired, signal } = options;
+  const { workspacePath, emit, signal } = options;
+  // Wrap the caller's confirmation callback with a per-session approval cache
+  // so identical (toolName, args) pairs approved once don't prompt again.
+  const onConfirmationRequired = buildCachedConfirmation(
+    sessionId,
+    options.onConfirmationRequired,
+  );
 
   // --- Extract user message for intent matching ---
   const userMessage = extractUserMessage(request);
@@ -409,13 +468,19 @@ export async function dispatch(
         } else if (chunk.type === 'tool_call' && chunk.toolCall) {
           const toolName = chunk.toolCall.name;
           
-          // --- Auto-Escalation ---
+          // --- Allowlist enforcement (no silent escalation) ---
+          // Escalating mid-stream swaps system prompt + allowedTools while the
+          // gRPC stream is still open, which corrupts the agent's context and
+          // lets a restricted agent (e.g. reviewer) silently gain execute-command.
+          // Block the call instead and let the model self-correct.
           if (!agent.allowedTools.includes(toolName)) {
-            const escalatedAgent = agents.find(a => a.allowedTools.includes(toolName));
-            if (escalatedAgent) {
-              emit('agent:status', { agent: escalatedAgent.name, status: 'running', detail: `Escalated from ${agent.name} to handle ${toolName}` });
-              agent = escalatedAgent;
-            }
+            emit('tool:result', {
+              toolName,
+              success: false,
+              output: '',
+              error: `[TOOL BLOCKED] Agent "${agent.name}" is not allowed to use "${toolName}". Allowed tools: ${agent.allowedTools.join(', ')}.`,
+            });
+            continue; // skip handleToolCall entirely
           }
 
           // --- Budget Enforcement ---
@@ -635,7 +700,7 @@ export async function dispatch(
             // Add tool result to history
             ollamaMessages.push({
               role: 'tool',
-              content: toolResult.output || toolResult.error || 'Done',
+              content: buildToolResultContent(toolResult),
               tool_call_id: call.id,
             } as any);
 
@@ -668,6 +733,9 @@ export async function dispatch(
     throw error;
   } finally {
     activeControllers.delete(sessionId);
+    // Approval cache is scoped to a single dispatch (one user message).
+    // Clear it so the next message starts with a clean slate.
+    approvedOps.delete(sessionId);
   }
 
   if (task) {
@@ -680,6 +748,19 @@ export async function dispatch(
 // ---------------------------------------------------------------------------
 // Tool call handling (private)
 // ---------------------------------------------------------------------------
+
+/**
+ * Format tool result content for the LLM message history.
+ *
+ * On failure, prefixes with [TOOL FAILED] so the model cannot misread
+ * an error string as a success output and hallucinate a positive response.
+ */
+function buildToolResultContent(toolResult: ToolResult): string {
+  if (toolResult.success) {
+    return toolResult.output || 'Done';
+  }
+  return `[TOOL FAILED] ${toolResult.error || 'Unknown error'}. Do NOT report success to the user. Analyze the error, adapt your approach, and retry with a corrected command (max 2 retries).`;
+}
 
 /**
  * Handle a tool call from the gRPC stream:

@@ -45,6 +45,7 @@ Respond in the user's language.
 - Use PowerShell syntax: \`Get-ChildItem\`, \`Copy-Item\`, \`Remove-Item\`, \`Get-Process\`, \`Stop-Process\`, etc.
 - Package managers (npm, pnpm, yarn, node) work as-is — they are in PATH.
 - Avoid bare Unix commands (\`ls\`, \`rm\`, \`cat\`, \`grep\`) — use PowerShell equivalents.
+- **PATH RESOLUTION (MANDATORY):** NEVER construct paths with a literal username (e.g. \`C:\\Users\\<username>\`). ALWAYS resolve user paths via environment variables: \`$env:USERPROFILE\` (home dir), \`[Environment]::GetFolderPath('Desktop')\` (Desktop), \`$env:APPDATA\`, \`$env:LOCALAPPDATA\`. Before any file/directory operation, if the target path involves a user folder, resolve it first with a read-only command such as \`Write-Output $env:USERPROFILE\`.
 
 Your primary responsibilities:
 - Run build scripts, test suites, and project lifecycle commands
@@ -60,6 +61,7 @@ Guidelines:
 - If a command fails, analyse the error and adapt — do not repeat the identical command.
 - Commands time out after 10s — for long-running tasks, suggest running them in a separate terminal.
 - Never run destructive commands without explicit user intent.
+- **Command batching:** Combine multiple logical steps into a single \`execute-command\` call using \`;\` or PowerShell script blocks \`{ ... }\` whenever possible. Each tool call requires user confirmation — minimise the number of calls by batching related operations.
 
 You have access to the following tools: execute-command, list-files, read-file.`;
 
