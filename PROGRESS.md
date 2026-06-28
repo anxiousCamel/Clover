@@ -279,28 +279,46 @@ orçamento apertado; proveniência), agent-runtime **5/5** (ordem sequencial sob
 variáveis; isolamento; comunicação entre atores; ator desconhecido; erro não derruba o
 ator). Regressão completa: **49/49** em 10 suítes; build de **16 pacotes** → exit 0.
 
+### Fatia 8 — Wiring ponta-a-ponta (Agent) — ✅ CONCLUÍDA
+Objetivo: o fluxo "respirando" de uma meta até o resultado executado/persistido,
+comprovando isolamento do Actor Model e sincronia do Event Bus.
+
+Pacote/mudanças:
+- [x] `@clover/agent` (novo) — `Agent.run(goal)`: **ContextBuilder** (Tool Search
+      seleciona só as tools relevantes) → **Planner** (LLM→IR usando apenas as tools
+      selecionadas) → **ResourceManager.run(Scheduler.submit)** (execução durável,
+      concorrência limitada, eventos no bus → journal).
+- [x] `@clover/kernel` — `listTools()` (catálogo de descritores p/ Context/Search).
+- [x] `@clover/llm` — `MockProvider` aceita um responder `(req) => string` (mocks
+      dinâmicos, ex.: plano derivado da meta).
+
+**Verificação (executada):** `@clover/agent` **2/2**:
+- fluxo único: meta → contexto (tool `work` selecionada via Tool Search) → plano →
+  execução durável → `["work task alpha"]`, task `done` no journal;
+- **N metas como atores isolados**: 5 metas disparadas em paralelo via `ActorSystem`,
+  cada ator devolve o resultado **da sua própria meta** (sem cross-talk = isolamento),
+  o `ResourceManager` mantém o **pico de concorrência ≤ 2** (governança) e o **único
+  Event Bus** alimenta o journal que reconstrói **5 tasks independentes** (sincronia).
+- Regressão completa: **51/51** em 11 suítes; build de **17 pacotes** → exit 0.
+
 ---
 
-## Estado consolidado (Fases 0–3)
+## Estado consolidado (Fases 0–3 + wiring)
 
 | Fase | Cobertura entregue |
 |---|---|
 | **0 — Fundações** | Event Bus (`event-bus`), Event Store + projeções + replay (`state`), Scheduler durável + resume (`scheduler`). ✅ núcleo |
 | **1 — IR + Determinismo** | Plan IR + validator (`ir`), IR VM / DAG runner (`executor`), Planner sob constrained decoding (`planner` + `llm`). ✅ núcleo |
-| **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) pendentes |
+| **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) **no backlog** |
 | **3 — Cognição em escala** | Tool Search (`tool-search`), Context Builder (`context-builder`), Actor runtime (`agent-runtime`). ✅ núcleo |
+| **Wiring** | `@clover/agent` liga tudo ponta-a-ponta (Context → Planner → Scheduler/RM). ✅ |
 
-**16 pacotes · 49 testes verdes · `tsc --build` exit 0.**
-
-> **As Fases 1, 2 e 3 têm seus núcleos entregues e verificados.** O que resta são
-> aprofundamentos (abaixo), não fundações.
+**17 pacotes · 51 testes verdes · `tsc --build` exit 0.**
 
 ## Próximas fatias (planejadas)
 
-- **Fatia 8 — Integração de cognição:** ligar Planner → Context Builder → Scheduler
-  (montar contexto orçado antes de planejar; Tool Search alimentando o Planner) e
-  wire do `ResourceManager` no Scheduler (concorrência/timeout por task). Puro JS.
-- **Fatia 9 — Sandbox nativo:** Tier 1 `isolated-vm`, Tier 2 WASM. *Risco: build
-  nativo — validar e fazer Yield se indisponível.*
-- **Fatia 10 — Conhecimento (Fase 4):** AST Index (tree-sitter), Knowledge Graph
-  embarcado, cache semântico de embeddings.
+- **Fatia 10 — Conhecimento (Fase 4) — PRÓXIMA (autorizada):** `@clover/ast-index`
+  (tree-sitter) e `@clover/knowledge-graph` embarcado. Espinha dorsal para não afogar
+  o LLM com tokens (recuperação estrutural em vez de texto cru).
+- **Fatia 9 — Sandbox nativo — POSTERGADA (backlog técnico):** Tier 1 `isolated-vm`,
+  Tier 2 WASM. O Tier 3 atende o isolamento da POC atual.

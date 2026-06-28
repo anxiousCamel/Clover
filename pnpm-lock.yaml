@@ -136,6 +136,37 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@25.6.0)(jsdom@29.1.1)
 
+  packages/agent:
+    dependencies:
+      '@clover/context-builder':
+        specifier: workspace:*
+        version: link:../context-builder
+      '@clover/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@clover/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@clover/planner':
+        specifier: workspace:*
+        version: link:../planner
+      '@clover/resource-manager':
+        specifier: workspace:*
+        version: link:../resource-manager
+      '@clover/scheduler':
+        specifier: workspace:*
+        version: link:../scheduler
+      '@clover/tool-search':
+        specifier: workspace:*
+        version: link:../tool-search
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@25.6.0)(jsdom@29.1.1)
+
   packages/agent-runtime:
     devDependencies:
       typescript:

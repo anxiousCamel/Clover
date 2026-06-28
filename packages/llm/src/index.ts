@@ -30,21 +30,31 @@ export interface LlmProvider {
  * Provider determinístico para testes. Devolve respostas pré-definidas em
  * sequência (a última se repete). Registra a última requisição recebida.
  */
+/** Função que deriva a resposta a partir da requisição (mocks dinâmicos). */
+export type MockResponder = (req: StructuredRequest) => string;
+
 export class MockProvider implements LlmProvider {
   readonly name = 'mock';
   private readonly responses: string[];
+  private readonly responder?: MockResponder;
   private cursor = 0;
   lastRequest?: StructuredRequest;
   readonly requests: StructuredRequest[] = [];
 
-  constructor(responses: string | string[]) {
-    this.responses = Array.isArray(responses) ? responses : [responses];
-    if (this.responses.length === 0) this.responses.push('');
+  constructor(responses: string | string[] | MockResponder) {
+    if (typeof responses === 'function') {
+      this.responder = responses;
+      this.responses = [];
+    } else {
+      this.responses = Array.isArray(responses) ? responses : [responses];
+      if (this.responses.length === 0) this.responses.push('');
+    }
   }
 
   async completeStructured(req: StructuredRequest): Promise<string> {
     this.lastRequest = req;
     this.requests.push(req);
+    if (this.responder) return this.responder(req);
     const idx = Math.min(this.cursor, this.responses.length - 1);
     this.cursor++;
     return this.responses[idx];

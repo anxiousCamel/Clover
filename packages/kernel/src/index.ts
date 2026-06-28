@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { PlanIR, RunResult } from '@clover/contracts';
+import type { PlanIR, RunResult, ToolDescriptor } from '@clover/contracts';
 import { EventBus } from '@clover/event-bus';
 import { CapabilityResolver } from '@clover/capability';
 import { ExecutionEngine, type ResumeState } from '@clover/executor';
@@ -58,6 +58,11 @@ export class Kernel {
   registerTools(tools: LocalTool[]): this {
     for (const t of tools) this.registry.register(t);
     return this;
+  }
+
+  /** Catálogo de descritores das tools registradas (para Tool Search / Context). */
+  listTools(): ToolDescriptor[] {
+    return this.registry.list();
   }
 
   /** Inicializa o kernel e anuncia no Event Bus. Idempotente. */
