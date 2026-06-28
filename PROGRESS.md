@@ -144,15 +144,40 @@ ESTRUTURA (schema/constrained); o **validator determinístico** garante a SEMÂN
 
 ---
 
+### Fatia 3 — Estado Durável (Event Store + Projeções + Replay) — ✅ CONCLUÍDA
+Objetivo: tornar o **journal append-only a fonte da verdade** e reconstruir o estado
+das tasks por replay (ADR-005). Fecha o núcleo da Fase 0 (resto das Fundações).
+
+Pacote:
+- [x] `@clover/state` — `EventStore` (in-memory + persistência **JSONL puro-JS**, com
+      reload no "restart"), `SnapshotStore` (in-memory + disco), `recordBusToStore`
+      (liga o Event Bus ao journal: observabilidade = durabilidade), `projectTasks`
+      (reconstrói status/outputs/nós concluídos **só a partir do journal**).
+
+**Verificação (executada):**
+- `pnpm --filter @clover/state exec vitest run` → **5/5 testes verdes**: append/read
+  ordenado; **persistência JSONL sobrevive a reabrir o arquivo**; snapshot round-trip
+  (memória + disco); integração Kernel → journal → projeção (`done`, `["hello
+  world"]`, nós `[n1,n2]`) **reconstruída por replay** (journal serializado e
+  re-projetado do zero); projeção de task `failed`.
+- Build completo do grafo (9 pacotes) → **exit 0**; suíte total **16/16** (kernel 5,
+  planner 6, state 5).
+
+**Fora desta fatia (registrado):** *resume por checkpoint* que **re-executa apenas os
+nós restantes** exige cooperação do Executor (pular nós já concluídos lendo o
+journal/snapshot). O spine de durabilidade/replay/projeção está provado; a
+re-execução incremental entra junto com o `@clover/scheduler` durável.
+
+---
+
 ## Próximas fatias (planejadas)
 
-- **Fatia 3 — Estado durável (resto da Fase 0):** `@clover/state` — event store
-  append-only (JSONL puro-JS primeiro, para evitar dep nativa) + snapshots +
-  projeções; `@clover/scheduler` durável com resume por checkpoint. *Risco: nenhum
-  (puro JS).*
-- **Fatia 4 — Segurança real (Fase 2):** `@clover/capability` (resolver dedicado +
+- **Fatia 4 — Scheduler durável + resume:** `@clover/scheduler` (fila durável sobre o
+  Event Store) e cooperação do Executor para **resume incremental** por checkpoint.
+  *Risco: nenhum (puro JS).*
+- **Fatia 5 — Segurança real (Fase 2):** `@clover/capability` (resolver dedicado +
   assinatura), `@clover/resource-manager`, `@clover/sandbox` (Tier 1 isolated-vm /
   Tier 2 WASM / Tier 3 processo). *Risco: builds nativos (`isolated-vm`/`wasmtime`)
   — validar disponibilidade no ambiente antes; degradar para Tier 3 se necessário.*
-- **Fatia 5 — Cognição em escala:** `@clover/context-builder`, `@clover/tool-search`
+- **Fatia 6 — Cognição em escala:** `@clover/context-builder`, `@clover/tool-search`
   (descoberta semântica), `@clover/agent-runtime` (atores). Fecha Fase 3.
