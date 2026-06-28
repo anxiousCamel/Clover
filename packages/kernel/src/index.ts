@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { PlanIR, RunResult } from '@clover/contracts';
 import { EventBus } from '@clover/event-bus';
-import { ExecutionEngine } from '@clover/executor';
+import { ExecutionEngine, type ResumeState } from '@clover/executor';
 import { LocalToolBridge, ToolRegistry, type LocalTool, type ToolBridge } from '@clover/tool-abi';
 
 import { CapabilityResolver } from './capability.js';
@@ -23,6 +23,13 @@ export interface SubmitPlanOptions {
   workspacePath?: string;
   /** Reaproveitar um traceId (ex.: vindo do Scheduler). */
   traceId?: string;
+}
+
+export interface ExecutePlanOptions {
+  workspacePath?: string;
+  traceId?: string;
+  /** Estado de retomada (resume incremental por checkpoint). */
+  resume?: ResumeState;
 }
 
 export class Kernel {
@@ -66,25 +73,38 @@ export class Kernel {
   }
 
   /**
-   * Submete um Plan IR para execução. Cunha um CapabilityToken de menor
-   * privilégio e o executa pela Execution Engine.
+   * Executa um Plan IR para um `taskId` JÁ DEFINIDO. Cunha o token de menor
+   * privilégio e roda a Execution Engine (com `resume` opcional). NÃO emite
+   * `task:submitted` — a identidade/persistência da task é responsabilidade de
+   * quem chama (ex.: o Scheduler durável).
+   */
+  async executePlan(
+    plan: PlanIR,
+    taskId: string,
+    opts: ExecutePlanOptions = {},
+  ): Promise<RunResult> {
+    if (!this.booted) this.boot();
+    const traceId = opts.traceId ?? taskId;
+    const workspacePath = opts.workspacePath ?? process.cwd();
+    const token = this.capabilities.mint(plan, taskId);
+    return this.engine.run(plan, token, { taskId, traceId, workspacePath }, opts.resume);
+  }
+
+  /**
+   * Submete um Plan IR: gera o `taskId`, emite `task:submitted` e executa.
+   * Conveniência para uso direto; o Scheduler durável usa `executePlan`.
    */
   async submitPlan(plan: PlanIR, opts: SubmitPlanOptions = {}): Promise<RunResult> {
     if (!this.booted) this.boot();
-
     const taskId = randomUUID();
     const traceId = opts.traceId ?? taskId;
-    const workspacePath = opts.workspacePath ?? process.cwd();
-
     this.events.publish({
       topic: 'task:submitted',
       traceId,
       source: 'kernel',
       payload: { taskId, goalId: plan.goalId },
     });
-
-    const token = this.capabilities.mint(plan, taskId);
-    return this.engine.run(plan, token, { taskId, traceId, workspacePath });
+    return this.executePlan(plan, taskId, { traceId, workspacePath: opts.workspacePath });
   }
 }
 

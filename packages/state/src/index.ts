@@ -13,7 +13,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import type { EventEnvelope, ExecEvent, Unsubscribe } from '@clover/contracts';
+import type { EventEnvelope, ExecEvent, PlanIR, Unsubscribe } from '@clover/contracts';
 import type { EventBus } from '@clover/event-bus';
 
 // ===========================================================================
@@ -123,6 +123,42 @@ export interface TaskProjection {
  * Reconstrói o estado das tasks PURAMENTE a partir do journal — a essência do
  * event sourcing: nenhum estado vivo é necessário para a recuperação.
  */
+/**
+ * Reconstrói as saídas dos nós já concluídos de uma task a partir do journal
+ * (eventos `node:done`). Base do resume incremental: o que já rodou não roda de
+ * novo. O evento mais recente para um nó vence.
+ */
+export function rebuildNodeOutputs(
+  events: EventEnvelope[],
+  taskId: string,
+): Record<string, unknown> {
+  const outputs: Record<string, unknown> = {};
+  for (const evt of events) {
+    if (evt.topic === 'node:done') {
+      const p = evt.payload as Extract<ExecEvent, { type: 'node:done' }>;
+      if (p.taskId === taskId) outputs[p.nodeId] = p.output;
+    }
+  }
+  return outputs;
+}
+
+/**
+ * Recupera o Plan IR de uma task a partir do journal (evento `task:submitted`
+ * com o plano no payload). Permite resume sem nenhum estado vivo.
+ */
+export function findSubmittedPlan(
+  events: EventEnvelope[],
+  taskId: string,
+): PlanIR | undefined {
+  for (const evt of events) {
+    if (evt.topic === 'task:submitted') {
+      const p = evt.payload as { taskId: string; plan?: PlanIR };
+      if (p.taskId === taskId && p.plan) return p.plan;
+    }
+  }
+  return undefined;
+}
+
 export function projectTasks(events: EventEnvelope[]): Map<string, TaskProjection> {
   const tasks = new Map<string, TaskProjection>();
 

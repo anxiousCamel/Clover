@@ -170,11 +170,38 @@ re-execução incremental entra junto com o `@clover/scheduler` durável.
 
 ---
 
+### Fatia 4 — Scheduler Durável + Resume Incremental — ✅ CONCLUÍDA
+Objetivo: substituir o fire-and-forget; toda task é persistida (com o próprio Plan IR)
+e **resumível**, re-executando SOMENTE os nós restantes. Atende ao requisito de
+"tarefas de horas/dias" + recovery após crash.
+
+Mudanças:
+- [x] `@clover/contracts` — novo evento `node:skipped` (observabilidade do resume).
+- [x] `@clover/executor` — `run(plan, token, ctx, resume?)`: pré-semeia saídas de nós
+      concluídos e **pula** esses nós (backward-compatible: chamadas de 3 args
+      inalteradas).
+- [x] `@clover/kernel` — `executePlan(plan, taskId, { resume })` (executa para um
+      taskId dado, sem emitir `task:submitted`); `submitPlan` agora delega a ele.
+- [x] `@clover/state` — `rebuildNodeOutputs(events, taskId)` e
+      `findSubmittedPlan(events, taskId)` (recuperam saídas e o plano do journal).
+- [x] `@clover/scheduler` — `DurableScheduler.submit` (persiste `task:submitted` COM o
+      plano) e `.resume(taskId)` (recupera plano + saídas do journal e re-executa só o
+      restante).
+
+**Verificação (executada):**
+- `pnpm --filter @clover/scheduler exec vitest run` → **3/3 verdes**:
+  - resume incremental no mesmo processo (nó concluído **não** re-executa);
+  - **crash recovery**: orquestrador 100% novo, com APENAS o journal em disco, retoma
+    a task até `done` — `echo` re-executado **0 vezes** em B (saída veio do journal),
+    só o nó restante rodou;
+  - resume de task inexistente lança erro.
+- Regressão completa: **19/19** (kernel 5, planner 6, state 5, scheduler 3); build de
+  **10 pacotes** → exit 0.
+
+---
+
 ## Próximas fatias (planejadas)
 
-- **Fatia 4 — Scheduler durável + resume:** `@clover/scheduler` (fila durável sobre o
-  Event Store) e cooperação do Executor para **resume incremental** por checkpoint.
-  *Risco: nenhum (puro JS).*
 - **Fatia 5 — Segurança real (Fase 2):** `@clover/capability` (resolver dedicado +
   assinatura), `@clover/resource-manager`, `@clover/sandbox` (Tier 1 isolated-vm /
   Tier 2 WASM / Tier 3 processo). *Risco: builds nativos (`isolated-vm`/`wasmtime`)

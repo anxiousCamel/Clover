@@ -219,6 +219,7 @@ export type ExecEvent =
   | { type: 'plan:start'; taskId: string; nodeCount: number }
   | { type: 'node:start'; taskId: string; nodeId: string; tool?: string }
   | { type: 'node:done'; taskId: string; nodeId: string; output: unknown }
+  | { type: 'node:skipped'; taskId: string; nodeId: string }
   | { type: 'node:fault'; taskId: string; nodeId: string; fault: ExecutionFault }
   | { type: 'checkpoint'; taskId: string; completed: string[] }
   | { type: 'plan:done'; taskId: string; outputs: unknown[] }

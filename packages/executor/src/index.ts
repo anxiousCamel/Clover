@@ -31,6 +31,14 @@ export interface ExecContext {
   workspacePath: string;
 }
 
+/**
+ * Estado de retomada: saídas de nós já concluídos em uma execução anterior.
+ * Pré-semeadas no `nodeOutputs`; o Executor PULA esses nós (resume incremental).
+ */
+export interface ResumeState {
+  nodeOutputs: Record<string, unknown>;
+}
+
 /** Erro interno de resolução de ref (capturado e convertido em fault). */
 class RefError extends Error {
   constructor(public readonly nodeId: string, message: string) {
@@ -51,9 +59,18 @@ export class ExecutionEngine {
     private readonly bus: EventBus,
   ) {}
 
-  /** Executa um plano e retorna o resultado final. Fail-fast no skeleton. */
-  async run(plan: PlanIR, token: CapabilityToken, ctx: ExecContext): Promise<RunResult> {
-    const nodeOutputs: Record<string, unknown> = {};
+  /**
+   * Executa um plano e retorna o resultado final. Fail-fast no skeleton.
+   * Se `resume` for fornecido, nós já presentes em `resume.nodeOutputs` são
+   * pulados (re-execução incremental por checkpoint).
+   */
+  async run(
+    plan: PlanIR,
+    token: CapabilityToken,
+    ctx: ExecContext,
+    resume?: ResumeState,
+  ): Promise<RunResult> {
+    const nodeOutputs: Record<string, unknown> = { ...(resume?.nodeOutputs ?? {}) };
 
     // 1) Validação — nenhum plano inválido executa.
     const v = validatePlan(plan);
@@ -77,6 +94,11 @@ export class ExecutionEngine {
       try {
         await Promise.all(
           level.map(async (nodeId) => {
+            // Resume incremental: nó já concluído numa execução anterior → pula.
+            if (nodeId in nodeOutputs) {
+              this.emit({ type: 'node:skipped', taskId: ctx.taskId, nodeId }, ctx);
+              return;
+            }
             const node = nodeById.get(nodeId)!;
             const output = await this.executeNode(node, nodeOutputs, token, ctx);
             nodeOutputs[nodeId] = output;
