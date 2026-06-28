@@ -81,6 +81,70 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@25.6.0)(jsdom@29.1.1)
 
+  apps/cli:
+    dependencies:
+      '@clover/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
+      '@clover/ast-index':
+        specifier: workspace:*
+        version: link:../../packages/ast-index
+      '@clover/blackboard':
+        specifier: workspace:*
+        version: link:../../packages/blackboard
+      '@clover/context-builder':
+        specifier: workspace:*
+        version: link:../../packages/context-builder
+      '@clover/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@clover/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
+      '@clover/knowledge-graph':
+        specifier: workspace:*
+        version: link:../../packages/knowledge-graph
+      '@clover/knowledge-retriever':
+        specifier: workspace:*
+        version: link:../../packages/knowledge-retriever
+      '@clover/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@clover/planner':
+        specifier: workspace:*
+        version: link:../../packages/planner
+      '@clover/resource-manager':
+        specifier: workspace:*
+        version: link:../../packages/resource-manager
+      '@clover/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
+      '@clover/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
+      '@clover/state':
+        specifier: workspace:*
+        version: link:../../packages/state
+      '@clover/tool-search':
+        specifier: workspace:*
+        version: link:../../packages/tool-search
+      '@clover/tui':
+        specifier: workspace:*
+        version: link:../../packages/tui
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.0)(jsdom@29.1.1)
+
   apps/ui:
     dependencies:
       '@clover/shared':
@@ -2479,8 +2543,6 @@ snapshots:
       json-bignum: 0.0.3
       pad-left: 2.1.0
       tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@75lb/nature'
 
   '@asamuzakjp/css-color@5.1.11':
     dependencies:
@@ -3184,6 +3246,8 @@ snapshots:
       json-bignum: 0.0.3
       pad-left: 2.1.0
       tslib: 2.8.1
+    transitivePeerDependencies:
+      - '@75lb/nature'
 
   aria-query@5.3.0:
     dependencies:

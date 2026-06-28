@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "types": ["node"],
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/tui" },
+    { "path": "../../packages/blackboard" },
+    { "path": "../../packages/kernel" },
+    { "path": "../../packages/agent" },
+    { "path": "../../packages/scheduler" },
+    { "path": "../../packages/state" },
+    { "path": "../../packages/llm" },
+    { "path": "../../packages/planner" },
+    { "path": "../../packages/context-builder" },
+    { "path": "../../packages/resource-manager" },
+    { "path": "../../packages/sandbox" },
+    { "path": "../../packages/tool-search" },
+    { "path": "../../packages/ast-index" },
+    { "path": "../../packages/knowledge-graph" },
+    { "path": "../../packages/knowledge-retriever" }
+  ]
+}
