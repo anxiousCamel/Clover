@@ -334,24 +334,65 @@ completa: **58/58** em 13 suítes; build de **19 pacotes** → exit 0.
 
 ---
 
-## Estado consolidado (Fases 0–4)
+---
+
+## Mandato de Execução Contínua — REPL Avançado + Embalagem DX — ✅ CONCLUÍDO
+
+Executado de ponta a ponta, sem yields parciais.
+
+### Escopo 0 — `@clover/blackboard` (pré-requisito)
+Cognição compartilhada event-sourced (post/query/subscribe, versão por tópico,
+persistência JSONL, `stats()`). Necessário para `/status` e a resiliência. **5/5**.
+
+### Escopo 1 — Cognição integrada (KG+AST → contexto → planner)
+- `@clover/knowledge-retriever` (ranqueia símbolos AST + membros do KG em snippets
+  estruturais); `context-builder` expõe `selectedMemory`; `planner.plan(.., {contextText})`;
+  `agent` recupera → alimenta o contexto **sob orçamento rígido** antes de planejar.
+- Verificação: o contexto estrutural chega ao prompt do Planner **e** é cortado quando
+  o orçamento aperta. **knowledge-retriever 3/3 · agent 4/4**.
+
+### Escopo 2 — REPL avançado (`@clover/tui` + `apps/cli`)
+- `@clover/tui` (**18/18**): tema Clover centralizado (cores/símbolos) com **fallback**
+  sem-cor (NO_COLOR/não-TTY) e ASCII (não-UTF-8/`CLOVER_ASCII`); parser de `/comandos`;
+  interceptação de arquivos/imagens em **tags limpas**; contador de tokens; `decodeKey`
+  + `ChoicePrompt` (raw-key, **sem vazar tecla**) + `StatusBoard` multi-ator.
+- `apps/cli` (**17/17** de lógica): REPL chat-loop; `/help /model /status /clear /exit`;
+  `/exec` no **Sandbox Tier 3** com **confirmação contextual em raw mode**; spinner vivo
+  com raciocínio dinâmico (anti-freeze) + nº de atores + tokens.
+
+### Escopo 3 — Instalação + tema + resiliência + manual
+- **`clover setup`** idempotente (Node/pnpm/node_modules/build/Ollama/modelo), faz só o
+  que falta; `--check` diagnostica sem agir. **4/4**.
+- **Tema centralizado** em `@clover/tui` (sem cores hardcoded espalhadas) + fallback.
+- **Resiliência catastrófica**: `uncaughtException`/`unhandledRejection` → persiste no
+  **Blackboard** → saída polida, **nunca stack cru**. **3/3**.
+- **README.md** Tier-1 (quickstart copy/paste + guia do REPL) + scripts raiz
+  (`pnpm clover`, `clover:setup`, `build:os`).
+
+**Smoke:** `clover --help` e `clover setup --check` rodam; fallback ASCII/sem-cor ativo
+sob pipe (mostra `*`/`[ok]`).
+
+---
+
+## Estado consolidado (Fases 0–4 + Ecossistema DX) — FUNDAÇÃO DO ECOSSISTEMA CONCLUÍDA
 
 | Fase | Cobertura entregue |
 |---|---|
-| **0 — Fundações** | Event Bus (`event-bus`), Event Store + projeções + replay (`state`), Scheduler durável + resume (`scheduler`). ✅ núcleo |
-| **1 — IR + Determinismo** | Plan IR + validator (`ir`), IR VM / DAG runner (`executor`), Planner sob constrained decoding (`planner` + `llm`). ✅ núcleo |
-| **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) **no backlog** |
-| **3 — Cognição em escala** | Tool Search (`tool-search`), Context Builder (`context-builder`), Actor runtime (`agent-runtime`). ✅ núcleo |
-| **4 — Conhecimento** | AST Index (`ast-index`), Knowledge Graph (`knowledge-graph`). ✅ núcleo; tree-sitter multi-lang + cache semântico de embeddings no backlog |
-| **Wiring** | `@clover/agent` liga tudo ponta-a-ponta (Context → Planner → Scheduler/RM). ✅ |
+| **0 — Fundações** | `event-bus`, `state` (event store + replay), `scheduler` (durável + resume), `blackboard`. ✅ |
+| **1 — IR + Determinismo** | `ir`, `executor`, `planner` + `llm` (constrained decoding). ✅ |
+| **2 — Segurança** | `capability` (assinada), `resource-manager`, `sandbox` Tier 3. ✅ núcleo; Tiers 1/2 nativos **no backlog** |
+| **3 — Cognição em escala** | `tool-search`, `context-builder`, `agent-runtime`. ✅ |
+| **4 — Conhecimento** | `ast-index`, `knowledge-graph`, `knowledge-retriever`. ✅ núcleo; tree-sitter multi-lang no backlog |
+| **Wiring** | `@clover/agent` (Context → Planner → Scheduler/RM, com retrieval estrutural). ✅ |
+| **DX / Produto** | `@clover/tui` + `apps/cli` (REPL, setup, resiliência, tema, README). ✅ |
 
-**19 pacotes · 58 testes verdes · `tsc --build` exit 0.**
+**22 pacotes + `apps/cli` · 103 testes verdes (17 suítes) · `tsc --build` exit 0.**
 
 ## Backlog técnico (postergado, sem bloqueio)
 
 - **Fatia 9 — Sandbox nativo:** Tier 1 `isolated-vm`, Tier 2 WASM (limites finos de
   CPU/RAM). O Tier 3 atende o isolamento da POC.
 - **AST multi-linguagem:** `TreeSitterAstParser` (gramáticas WASM) atrás de `AstParser`.
-- **Cache semântico de embeddings** (Fase 4) e integração KG/AST ↔ Context Builder
-  (recuperação estrutural alimentando o contexto orçado).
-- **Wire do KG/AST no Agent** para retrieval estrutural antes do planejamento.
+- **Cache semântico de embeddings** (Fase 4).
+- **Confirmação destrutiva no fluxo do agente** (atual: `/exec` já usa raw-mode +
+  Tier 3; estender o gate a tools de escrita quando existirem).

@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import process from 'node:process';
 
 import { Agent } from '@clover/agent';
@@ -29,7 +29,19 @@ import { installResilience } from './resilience.js';
 import { renderSteps, runSetup, type SetupProbes } from './setup.js';
 import { clearScreen, createLineReader, promptChoice, render, withSpinner } from './terminal.js';
 
-const ROOT = process.cwd();
+/** Localiza a raiz do monorepo subindo até achar pnpm-workspace.yaml. */
+function findRepoRoot(start: string): string {
+  let dir = start;
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return start;
+}
+
+const ROOT = findRepoRoot(process.cwd());
 const OLLAMA_HOST = process.env.CLOVER_OLLAMA_HOST ?? 'http://localhost:11434';
 const DEFAULT_MODEL = process.env.CLOVER_MODEL ?? 'qwen2.5-coder';
 
