@@ -259,21 +259,48 @@ processo.
 
 ---
 
-## Estado consolidado (Fases 0–2)
+### Fatia 7 — Cognição em escala (Fase 3) — ✅ CONCLUÍDA
+Objetivo: viabilizar "centenas de agentes / milhares de tools" sem inundar o contexto
+de modelos pequenos. Puro JS.
+
+Pacotes:
+- [x] `@clover/tool-search` — `ToolSearch` + `LexicalToolSearch` (scorer determinístico
+      por overlap de termos, bônus para casamento no nome; pluggable para embeddings).
+- [x] `@clover/context-builder` — `ContextBuilder.build` monta o contexto sob
+      **orçamento de tokens** por prioridade (system → consulta → tools relevantes →
+      histórico recente → memória), descarta o que não cabe (`dropped`), registra
+      **proveniência** e usa o Tool Search para trazer só tools relevantes.
+- [x] `@clover/agent-runtime` — `ActorSystem`/`Actor`: mailbox **sequencial**, estado
+      **isolado** por ator, `ctx.send` entre atores, erros propagados só ao remetente.
+
+**Verificação (executada):** tool-search **4/4**, context-builder **4/4** (nunca excede
+o orçamento; system+consulta sempre presentes; seleção de tools via search; descarte sob
+orçamento apertado; proveniência), agent-runtime **5/5** (ordem sequencial sob atrasos
+variáveis; isolamento; comunicação entre atores; ator desconhecido; erro não derruba o
+ator). Regressão completa: **49/49** em 10 suítes; build de **16 pacotes** → exit 0.
+
+---
+
+## Estado consolidado (Fases 0–3)
 
 | Fase | Cobertura entregue |
 |---|---|
 | **0 — Fundações** | Event Bus (`event-bus`), Event Store + projeções + replay (`state`), Scheduler durável + resume (`scheduler`). ✅ núcleo |
 | **1 — IR + Determinismo** | Plan IR + validator (`ir`), IR VM / DAG runner (`executor`), Planner sob constrained decoding (`planner` + `llm`). ✅ núcleo |
-| **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) e wire do RM no Scheduler pendentes |
+| **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) pendentes |
+| **3 — Cognição em escala** | Tool Search (`tool-search`), Context Builder (`context-builder`), Actor runtime (`agent-runtime`). ✅ núcleo |
 
-**13 pacotes · 36 testes verdes · `tsc --build` exit 0.**
+**16 pacotes · 49 testes verdes · `tsc --build` exit 0.**
+
+> **As Fases 1, 2 e 3 têm seus núcleos entregues e verificados.** O que resta são
+> aprofundamentos (abaixo), não fundações.
 
 ## Próximas fatias (planejadas)
 
-- **Fatia 7 — Cognição em escala (Fase 3):** `@clover/context-builder` (montagem de
-  contexto sob orçamento de tokens), `@clover/tool-search` (descoberta semântica de
-  tools), `@clover/agent-runtime` (atores). Puro JS → sem risco.
-- **Fatia 8 — Sandbox nativo + wiring:** Tier 1 `isolated-vm`, Tier 2 WASM; wire do
-  `ResourceManager` no Scheduler (concorrência/timeout por task). *Risco: build
+- **Fatia 8 — Integração de cognição:** ligar Planner → Context Builder → Scheduler
+  (montar contexto orçado antes de planejar; Tool Search alimentando o Planner) e
+  wire do `ResourceManager` no Scheduler (concorrência/timeout por task). Puro JS.
+- **Fatia 9 — Sandbox nativo:** Tier 1 `isolated-vm`, Tier 2 WASM. *Risco: build
   nativo — validar e fazer Yield se indisponível.*
+- **Fatia 10 — Conhecimento (Fase 4):** AST Index (tree-sitter), Knowledge Graph
+  embarcado, cache semântico de embeddings.
