@@ -17,25 +17,33 @@ export const PLANNER_SYSTEM = [
   '- Não explique; produza apenas o plano no formato exigido.',
 ].join('\n');
 
-export function buildPlannerPrompt(goalText: string, tools: ToolDescriptor[]): string {
+export function buildPlannerPrompt(
+  goalText: string,
+  tools: ToolDescriptor[],
+  contextText?: string,
+): string {
   const toolLines = tools.map((t) => {
     const schema = JSON.stringify(t.inputSchema);
     return `- ${t.name}: ${t.description} | inputSchema=${schema}`;
   });
-  return [
-    `Meta: ${goalText}`,
-    '',
-    'Ferramentas disponíveis:',
-    ...toolLines,
-    '',
-    'Gere o plano (Plan IR) que cumpre a meta.',
-  ].join('\n');
+  const lines = [`Meta: ${goalText}`, ''];
+  if (contextText && contextText.trim()) {
+    // Contexto estrutural recuperado (AST/KG), já limitado pelo orçamento.
+    lines.push('Contexto do código (recuperação estrutural):', contextText.trim(), '');
+  }
+  lines.push('Ferramentas disponíveis:', ...toolLines, '', 'Gere o plano (Plan IR) que cumpre a meta.');
+  return lines.join('\n');
 }
 
 /** Prompt de reparo: reenviado quando a tentativa anterior foi inválida. */
-export function buildRepairPrompt(goalText: string, tools: ToolDescriptor[], errors: string[]): string {
+export function buildRepairPrompt(
+  goalText: string,
+  tools: ToolDescriptor[],
+  errors: string[],
+  contextText?: string,
+): string {
   return [
-    buildPlannerPrompt(goalText, tools),
+    buildPlannerPrompt(goalText, tools, contextText),
     '',
     'A tentativa anterior foi REJEITADA pelos seguintes motivos:',
     ...errors.map((e) => `- ${e}`),

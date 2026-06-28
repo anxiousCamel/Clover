@@ -57,6 +57,8 @@ export interface BuiltContext {
   tools: ToolDescriptor[];
   tokensUsed: number;
   provenance: ProvenanceRef[];
+  /** Memória que coube no orçamento (ex.: snippets estruturais para o Planner). */
+  selectedMemory: MemoryChunk[];
   /** Itens candidatos descartados por falta de orçamento. */
   dropped: number;
 }
@@ -146,6 +148,6 @@ export class ContextBuilder {
     }
     messages.push({ role: 'user', content: req.query });
 
-    return { messages, tools, tokensUsed: used, provenance, dropped };
+    return { messages, tools, tokensUsed: used, provenance, selectedMemory, dropped };
   }
 }

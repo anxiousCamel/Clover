@@ -22,6 +22,9 @@ import { ContextBuilder } from '@clover/context-builder';
 import { ResourceManager } from '@clover/resource-manager';
 import { LexicalToolSearch } from '@clover/tool-search';
 import { ActorSystem } from '@clover/agent-runtime';
+import { AstIndex } from '@clover/ast-index';
+import { buildGraphFromIndex } from '@clover/knowledge-graph';
+import { KnowledgeRetriever } from '@clover/knowledge-retriever';
 import { Agent } from '@clover/agent';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -137,5 +140,76 @@ describe('agent end-to-end wiring', () => {
     const projection = projectTasks(store.read());
     const done = [...projection.values()].filter((t) => t.status === 'done');
     expect(done).toHaveLength(5);
+  });
+});
+
+describe('agent structural retrieval (AST/KG -> context -> planner)', () => {
+  // Tool genérica que casa com a consulta (para o plano ter o que usar).
+  const lookupTool: LocalTool = defineTool(
+    {
+      name: 'lookup',
+      description: 'lookup describe symbol auth service login',
+      inputSchema: { type: 'object' },
+      capabilities: [],
+    },
+    () => ({ success: true, output: {} }),
+  );
+
+  function indexedRetriever(): KnowledgeRetriever {
+    const index = new AstIndex();
+    index.indexFile('src/auth.ts', 'export class AuthService { login(): void {} }');
+    return new KnowledgeRetriever(index, buildGraphFromIndex(index));
+  }
+
+  function build(budgetTokens: number) {
+    const captured: string[] = [];
+    const provider = new MockProvider((req) => {
+      captured.push(req.prompt);
+      return JSON.stringify({
+        version: '1',
+        goalId: 'x',
+        nodes: [{ kind: 'tool_call', id: 'n1', tool: 'lookup', args: {} }],
+        edges: [],
+        outputs: [],
+      });
+    });
+    const kernel = createKernel([lookupTool]);
+    const agent = new Agent({
+      kernel,
+      scheduler: new DurableScheduler(kernel, new EventStore()),
+      planner: new Planner(provider),
+      contextBuilder: new ContextBuilder(),
+      resourceManager: new ResourceManager(),
+      toolSearch: new LexicalToolSearch(),
+      knowledge: { retriever: indexedRetriever(), maxSnippets: 5 },
+      budget: { maxTokens: budgetTokens },
+      maxTools: 4,
+    });
+    return { agent, captured };
+  }
+
+  it('feeds budget-approved structural context into the planner prompt', async () => {
+    const { agent, captured } = build(4096);
+    const goal: Goal = { id: 'g1', text: 'describe AuthService login', workspacePath: '/tmp' };
+    const run = await agent.run(goal);
+
+    expect(run.result.status).toBe('done');
+    // O contexto estrutural recuperado entrou no orçamento...
+    expect(run.context.selectedMemory.length).toBeGreaterThan(0);
+    // ...e chegou ao prompt do Planner, com a estrutura (AuthService) e seu membro.
+    expect(captured[0]).toContain('Contexto do código');
+    expect(captured[0]).toContain('AuthService');
+    expect(captured[0]).toContain('login');
+  });
+
+  it('respects the token budget: a tight budget drops the heavier structural context', async () => {
+    // Orçamento que cabe consulta + tool, mas NÃO o snippet estrutural (mais pesado).
+    const { agent, captured } = build(22);
+    const goal: Goal = { id: 'g2', text: 'describe AuthService login', workspacePath: '/tmp' };
+    const run = await agent.run(goal);
+
+    expect(run.result.status).toBe('done'); // tool coube → plano válido
+    expect(run.context.selectedMemory).toEqual([]); // estrutura não coube
+    expect(captured[0]).not.toContain('Contexto do código');
   });
 });

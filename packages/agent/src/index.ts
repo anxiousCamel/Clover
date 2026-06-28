@@ -20,13 +20,21 @@ import type { Goal, RunResult } from '@clover/contracts';
 import {
   ContextBuilder,
   type BuiltContext,
+  type MemoryChunk,
   type TokenBudget,
 } from '@clover/context-builder';
 import type { Kernel } from '@clover/kernel';
+import type { KnowledgeRetriever } from '@clover/knowledge-retriever';
 import type { Planner } from '@clover/planner';
 import type { ResourceManager } from '@clover/resource-manager';
 import type { DurableScheduler } from '@clover/scheduler';
 import type { ToolSearch } from '@clover/tool-search';
+
+export interface AgentKnowledge {
+  retriever: KnowledgeRetriever;
+  /** Máx. de snippets estruturais candidatos (o orçamento decide o que entra). */
+  maxSnippets?: number;
+}
 
 export interface AgentDeps {
   kernel: Kernel;
@@ -35,6 +43,8 @@ export interface AgentDeps {
   contextBuilder: ContextBuilder;
   resourceManager: ResourceManager;
   toolSearch: ToolSearch;
+  /** Recuperação estrutural (AST/KG) opcional, alimentada ao contexto. */
+  knowledge?: AgentKnowledge;
   budget?: TokenBudget;
   maxTools?: number;
 }
@@ -52,17 +62,29 @@ export class Agent {
   async run(goal: Goal): Promise<AgentRunResult> {
     const tools = this.deps.kernel.listTools();
 
+    // 0) Recuperação estrutural (AST/KG): snippets candidatos para o contexto.
+    let memory: MemoryChunk[] = [];
+    if (this.deps.knowledge) {
+      memory = this.deps.knowledge.retriever
+        .retrieve(goal.text, { topK: this.deps.knowledge.maxSnippets ?? 5 })
+        .map((s) => ({ text: s.text, source: s.source }));
+    }
+
     // 1) Context Builder: orçamento de tokens + Tool Search seleciona relevantes.
+    //    O orçamento decide quais snippets estruturais (memory) realmente entram.
     const context = this.deps.contextBuilder.build({
       query: goal.text,
       budget: this.deps.budget ?? { maxTokens: 4096 },
       tools,
       toolSearch: this.deps.toolSearch,
       maxTools: this.deps.maxTools ?? 8,
+      memory,
     });
 
-    // 2) Planner: gera o Plan IR usando SOMENTE as tools selecionadas.
-    const plan = await this.deps.planner.plan(goal, context.tools);
+    // 2) Planner: gera o Plan IR usando SOMENTE as tools selecionadas, alimentado
+    //    pelo contexto estrutural que coube no orçamento (antes do planejamento).
+    const contextText = context.selectedMemory.map((m) => m.text).join('\n');
+    const plan = await this.deps.planner.plan(goal, context.tools, { contextText });
 
     // 3) Resource Manager governa a execução durável do Scheduler.
     const submitted = await this.deps.resourceManager.run(() =>

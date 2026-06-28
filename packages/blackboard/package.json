@@ -1,5 +1,5 @@
 {
-  "name": "@clover/agent",
+  "name": "@clover/blackboard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,16 +17,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clover/context-builder": "workspace:*",
-    "@clover/contracts": "workspace:*",
-    "@clover/kernel": "workspace:*",
-    "@clover/knowledge-retriever": "workspace:*",
-    "@clover/planner": "workspace:*",
-    "@clover/resource-manager": "workspace:*",
-    "@clover/scheduler": "workspace:*",
-    "@clover/tool-search": "workspace:*"
+    "@clover/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.9"
   }

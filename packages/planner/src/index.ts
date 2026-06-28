@@ -41,6 +41,11 @@ export interface PlannerOptions {
   maxAttempts?: number;
 }
 
+export interface PlanOptions {
+  /** Contexto estrutural recuperado (AST/KG), já limitado pelo orçamento. */
+  contextText?: string;
+}
+
 export class Planner {
   private readonly maxAttempts: number;
 
@@ -52,16 +57,17 @@ export class Planner {
   }
 
   /** Gera um Plan IR válido para a meta, ou lança PlanningError. */
-  async plan(goal: Goal, tools: ToolDescriptor[]): Promise<PlanIR> {
+  async plan(goal: Goal, tools: ToolDescriptor[], opts: PlanOptions = {}): Promise<PlanIR> {
     const schema = buildPlanSchema(tools);
     const toolNames = new Set(tools.map((t) => t.name));
+    const contextText = opts.contextText;
     let lastErrors: string[] = [];
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       const prompt =
         attempt === 1
-          ? buildPlannerPrompt(goal.text, tools)
-          : buildRepairPrompt(goal.text, tools, lastErrors);
+          ? buildPlannerPrompt(goal.text, tools, contextText)
+          : buildRepairPrompt(goal.text, tools, lastErrors, contextText);
 
       const raw = await this.provider.completeStructured({
         system: PLANNER_SYSTEM,
