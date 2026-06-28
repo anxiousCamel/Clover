@@ -54,6 +54,28 @@ para provar a espinha primeiro.
 
 ---
 
+## Decisão de reordenação #2 — Planner (geração restrita) antes de Estado/Sandbox
+
+**Contexto:** com o skeleton rodando um Plan IR pré-construído, o próximo passo de
+maior valor é fechar a pergunta "**de onde vem o Plan IR?**" — a tese central da
+arquitetura (ADR-004): LLM → IR sob **constrained decoding**.
+
+**Decisão:** executar a **Fatia 2 = Planner + geração restrita** antes de estado
+durável (resto da Fase 0) e do enforcement de sandbox (Fase 2).
+
+**Por quê:**
+1. O RAP marca a **Fase 1 (IR + Determinismo) como "maior ROI"**; o Planner é seu
+   item-cabeça e materializa a tese (geração restrita → IR válida → execução).
+2. É **100% verificável offline** com um provider determinístico (`MockProvider`):
+   zero risco ambiental.
+3. Estado durável (`better-sqlite3`) e sandbox (`isolated-vm`/`wasmtime`) exigem
+   **builds nativos** cuja disponibilidade neste ambiente é incerta. Sequenciá-los
+   depois permite **desriscar/validar deliberadamente** cada um, em vez de bloquear o
+   trabalho de maior ROI. (O `OllamaProvider` real foi escrito atrás do port, mas o
+   caminho ao vivo só roda com um Ollama ativo — não exercitado nos testes.)
+
+---
+
 ## Status das Fatias
 
 ### Fatia 1 — Walking Skeleton (Kernel roda um Plan IR) — ✅ CONCLUÍDA
@@ -93,12 +115,44 @@ Pacotes (todos em `packages/`):
 
 ---
 
+### Fatia 2 — Planner + Geração Restrita (LLM → IR) — ✅ CONCLUÍDA
+Objetivo: dado uma meta + tools disponíveis, gerar um **Plan IR válido** via LLM sob
+constrained decoding, com laço **gerar → parsear → validar → reparar**. Fecha o
+item-cabeça da Fase 1 (a tese do ADR-004).
+
+Pacotes:
+- [x] `@clover/llm` — port `LlmProvider`; `MockProvider` (determinístico, testes);
+      `OllamaProvider` (structured outputs via `format` = JSON Schema; caminho real,
+      exige Ollama ativo — não exercitado offline).
+- [x] `@clover/planner` — `buildPlanSchema(tools)` (restringe `tool` ao enum de tools
+      disponíveis — o modelo não inventa ferramenta), prompt builder, `tryParseJson`
+      (tolera cercas markdown), `normalizePlan` (fixa `goalId`), `validateCandidate`
+      (estrutural via `@clover/ir` + semântica: toda tool existe), e o laço de reparo.
+
+**Verificação (executada):**
+- `pnpm --filter @clover/planner exec vitest run` → **6/6 testes verdes**: schema
+  restringe nomes de tool; plano válido + `goalId` autoritativo; **end-to-end
+  Planner → Kernel → `["hello world"]`**; reparo após tool desconhecida (2ª tentativa
+  carrega o motivo); `PlanningError` quando o JSON nunca é válido; strip de cercas.
+- `pnpm --filter @clover/kernel exec vitest run` → **5/5** (sem regressão).
+- `pnpm exec tsc --build packages/planner ... packages/kernel ...` → **exit 0**
+  (grafo de 8 pacotes).
+
+**Separação de responsabilidades (chave do design):** o **decoder** garante a
+ESTRUTURA (schema/constrained); o **validator determinístico** garante a SEMÂNTICA
+(refs, DAG, tools existentes). O Planner **nunca** retorna plano inválido.
+
+---
+
 ## Próximas fatias (planejadas)
 
-- **Fatia 2 — Estado durável + Segurança real:** `@clover/state` (event store
-  append-only + snapshots + projeções), `@clover/capability` (resolver dedicado),
-  `@clover/sandbox` (Tier 0 IR VM já existe; adicionar isolated-vm/WASM/processo),
-  `@clover/resource-manager`. Fecha Fase 0 e Fase 2.
-- **Fatia 3 — Cognição:** `@clover/scheduler` durável, `@clover/planner`
-  (constrained decoding → Plan IR via `@clover/llm`), `@clover/context-builder`,
-  `@clover/tool-search`. Fecha Fase 1 e Fase 3.
+- **Fatia 3 — Estado durável (resto da Fase 0):** `@clover/state` — event store
+  append-only (JSONL puro-JS primeiro, para evitar dep nativa) + snapshots +
+  projeções; `@clover/scheduler` durável com resume por checkpoint. *Risco: nenhum
+  (puro JS).*
+- **Fatia 4 — Segurança real (Fase 2):** `@clover/capability` (resolver dedicado +
+  assinatura), `@clover/resource-manager`, `@clover/sandbox` (Tier 1 isolated-vm /
+  Tier 2 WASM / Tier 3 processo). *Risco: builds nativos (`isolated-vm`/`wasmtime`)
+  — validar disponibilidade no ambiente antes; degradar para Tier 3 se necessário.*
+- **Fatia 5 — Cognição em escala:** `@clover/context-builder`, `@clover/tool-search`
+  (descoberta semântica), `@clover/agent-runtime` (atores). Fecha Fase 3.
