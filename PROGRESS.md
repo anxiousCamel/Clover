@@ -303,7 +303,38 @@ Pacote/mudanças:
 
 ---
 
-## Estado consolidado (Fases 0–3 + wiring)
+### Fatia 10 — Conhecimento: AST Index + Knowledge Graph (Fase 4) — ✅ CONCLUÍDA
+Objetivo: operar sobre **estrutura** (AST) em vez de texto cru e ter um **grafo de
+conhecimento** consultável — a espinha dorsal para não afogar o LLM com tokens.
+
+Pacotes:
+- [x] `@clover/ast-index` — `AstParser` (interface plugável) + `TypeScriptAstParser`
+      (via **TS Compiler API**, zero dep nativa) extraindo símbolos
+      (function/class/method/interface/type/enum/variable, com `exported` e
+      `container`) e imports (default/namespace/named); `AstIndex` com outline,
+      `findSymbol`, reindexação.
+- [x] `@clover/knowledge-graph` — grafo embarcado (adjacência + persistência JSONL com
+      reload) — `upsertNode/Edge`, `neighbors` (por relação/direção), `edgesOf`; e
+      `buildGraphFromIndex` que **deriva o KG do AST** (nós file/symbol/module; arestas
+      contains/has-member/imports).
+
+**Decisão pragmática (registrada):** o backend de AST default é a **TS Compiler API**,
+não `tree-sitter` nativo. Motivo: o `tree-sitter` nativo carrega o **mesmo risco de
+build nativo** dos Tiers 1/2 de sandbox (postergados); a TS Compiler API já está
+instalada (zero dep nova, zero risco) e cobre TS/JS/TSX/JSX — as linguagens do próprio
+monorepo. Um `TreeSitterAstParser` multi-linguagem (gramáticas WASM) entra **atrás da
+mesma interface `AstParser`** sem mudar o índice nem o KG — é o mesmo padrão de
+pragmatismo já validado. Probe confirmou a TS Compiler API disponível (`ts 5.9.3`).
+
+**Verificação (executada):** ast-index **4/4** (kinds + export + container de métodos;
+imports default/namespace/named; ignora não suportados + reindexa; linha 1-based),
+knowledge-graph **3/3** (nós/arestas + `neighbors` por relação/direção; **persistência
+JSONL com reload**; **KG derivado do AST** com contains/has-member/imports). Regressão
+completa: **58/58** em 13 suítes; build de **19 pacotes** → exit 0.
+
+---
+
+## Estado consolidado (Fases 0–4)
 
 | Fase | Cobertura entregue |
 |---|---|
@@ -311,14 +342,16 @@ Pacote/mudanças:
 | **1 — IR + Determinismo** | Plan IR + validator (`ir`), IR VM / DAG runner (`executor`), Planner sob constrained decoding (`planner` + `llm`). ✅ núcleo |
 | **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) **no backlog** |
 | **3 — Cognição em escala** | Tool Search (`tool-search`), Context Builder (`context-builder`), Actor runtime (`agent-runtime`). ✅ núcleo |
+| **4 — Conhecimento** | AST Index (`ast-index`), Knowledge Graph (`knowledge-graph`). ✅ núcleo; tree-sitter multi-lang + cache semântico de embeddings no backlog |
 | **Wiring** | `@clover/agent` liga tudo ponta-a-ponta (Context → Planner → Scheduler/RM). ✅ |
 
-**17 pacotes · 51 testes verdes · `tsc --build` exit 0.**
+**19 pacotes · 58 testes verdes · `tsc --build` exit 0.**
 
-## Próximas fatias (planejadas)
+## Backlog técnico (postergado, sem bloqueio)
 
-- **Fatia 10 — Conhecimento (Fase 4) — PRÓXIMA (autorizada):** `@clover/ast-index`
-  (tree-sitter) e `@clover/knowledge-graph` embarcado. Espinha dorsal para não afogar
-  o LLM com tokens (recuperação estrutural em vez de texto cru).
-- **Fatia 9 — Sandbox nativo — POSTERGADA (backlog técnico):** Tier 1 `isolated-vm`,
-  Tier 2 WASM. O Tier 3 atende o isolamento da POC atual.
+- **Fatia 9 — Sandbox nativo:** Tier 1 `isolated-vm`, Tier 2 WASM (limites finos de
+  CPU/RAM). O Tier 3 atende o isolamento da POC.
+- **AST multi-linguagem:** `TreeSitterAstParser` (gramáticas WASM) atrás de `AstParser`.
+- **Cache semântico de embeddings** (Fase 4) e integração KG/AST ↔ Context Builder
+  (recuperação estrutural alimentando o contexto orçado).
+- **Wire do KG/AST no Agent** para retrieval estrutural antes do planejamento.
