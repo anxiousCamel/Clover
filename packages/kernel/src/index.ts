@@ -14,10 +14,9 @@ import { randomUUID } from 'node:crypto';
 
 import type { PlanIR, RunResult } from '@clover/contracts';
 import { EventBus } from '@clover/event-bus';
+import { CapabilityResolver } from '@clover/capability';
 import { ExecutionEngine, type ResumeState } from '@clover/executor';
 import { LocalToolBridge, ToolRegistry, type LocalTool, type ToolBridge } from '@clover/tool-abi';
-
-import { CapabilityResolver } from './capability.js';
 
 export interface SubmitPlanOptions {
   workspacePath?: string;
@@ -45,7 +44,9 @@ export class Kernel {
     this.registry = new ToolRegistry();
     this.bridge = new LocalToolBridge(this.registry);
     this.capabilities = new CapabilityResolver();
-    this.engine = new ExecutionEngine(this.bridge, this.events);
+    this.engine = new ExecutionEngine(this.bridge, this.events, {
+      verifyToken: (t) => this.capabilities.verify(t),
+    });
   }
 
   /** Registra uma tool local. (No futuro: também MCP/WASM via outras bridges.) */
@@ -86,7 +87,7 @@ export class Kernel {
     if (!this.booted) this.boot();
     const traceId = opts.traceId ?? taskId;
     const workspacePath = opts.workspacePath ?? process.cwd();
-    const token = this.capabilities.mint(plan, taskId);
+    const token = this.capabilities.mint(plan, taskId, { tools: this.registry.list() });
     return this.engine.run(plan, token, { taskId, traceId, workspacePath }, opts.resume);
   }
 
@@ -113,5 +114,5 @@ export function createKernel(tools: LocalTool[] = []): Kernel {
   return new Kernel().registerTools(tools).boot();
 }
 
-export { CapabilityResolver } from './capability.js';
+export { CapabilityResolver } from '@clover/capability';
 export { demoTools, echoTool, concatTool } from './tools.js';

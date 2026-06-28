@@ -8,13 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@clover/contracts': p('../contracts/src/index.ts'),
-      '@clover/capability': p('../capability/src/index.ts'),
-      '@clover/event-bus': p('../event-bus/src/index.ts'),
-      '@clover/ir': p('../ir/src/index.ts'),
-      '@clover/tool-abi': p('../tool-abi/src/index.ts'),
-      '@clover/executor': p('../executor/src/index.ts'),
-      '@clover/kernel': p('../kernel/src/index.ts'),
-      '@clover/state': p('./src/index.ts'),
+      '@clover/capability': p('./src/index.ts'),
     },
   },
   test: {

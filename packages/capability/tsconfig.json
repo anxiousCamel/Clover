@@ -17,12 +17,5 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../contracts" },
-    { "path": "../capability" },
-    { "path": "../event-bus" },
-    { "path": "../ir" },
-    { "path": "../tool-abi" },
-    { "path": "../executor" }
-  ]
+  "references": [{ "path": "../contracts" }]
 }

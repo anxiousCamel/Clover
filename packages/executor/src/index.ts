@@ -53,10 +53,21 @@ class NodeFault extends Error {
   }
 }
 
+export interface ExecutionEngineOptions {
+  /**
+   * Verificador opcional do CapabilityToken (assinatura/expiração). Se fornecido
+   * e retornar false, o plano inteiro falha com `capability_denied` — defesa
+   * contra tokens forjados/ampliados, essencial quando tools rodam fora do
+   * processo. Default: sem verificação (compatível com o skeleton).
+   */
+  verifyToken?: (token: CapabilityToken) => boolean;
+}
+
 export class ExecutionEngine {
   constructor(
     private readonly bridge: ToolBridge,
     private readonly bus: EventBus,
+    private readonly opts: ExecutionEngineOptions = {},
   ) {}
 
   /**
@@ -71,6 +82,16 @@ export class ExecutionEngine {
     resume?: ResumeState,
   ): Promise<RunResult> {
     const nodeOutputs: Record<string, unknown> = { ...(resume?.nodeOutputs ?? {}) };
+
+    // 0) Integridade do token: rejeita forjado/ampliado/expirado antes de tudo.
+    if (this.opts.verifyToken && !this.opts.verifyToken(token)) {
+      const fault: ExecutionFault = {
+        code: 'capability_denied',
+        message: 'token de capability inválido, ampliado ou expirado',
+      };
+      this.emit({ type: 'plan:failed', taskId: ctx.taskId, fault }, ctx);
+      return { taskId: ctx.taskId, status: 'failed', outputs: [], nodeOutputs, fault };
+    }
 
     // 1) Validação — nenhum plano inválido executa.
     const v = validatePlan(plan);

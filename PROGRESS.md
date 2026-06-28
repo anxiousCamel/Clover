@@ -200,11 +200,44 @@ Mudanças:
 
 ---
 
+### Fatia 5 — Capabilities assinadas + Resource Manager (núcleo da Fase 2) — ✅ CONCLUÍDA
+Objetivo: fechar a lacuna de autorização (P4) com **tokens de menor privilégio
+assinados** e adicionar o primitivo de **governança de recursos**. Caminho puro-JS
+(`node:crypto`), sem risco de build nativo.
+
+Pacotes/mudanças:
+- [x] `@clover/capability` (novo) — `CapabilityResolver`: `mint` (deriva caps mínimas
+      do Plan IR + caps de recurso declaradas por cada tool, **assina HMAC-SHA256**,
+      time-boxed), `verify` (detecta adulteração de `caps` e expiração, compara em
+      tempo constante) e `authorize`. Promovido do stub que vivia no kernel.
+- [x] `@clover/resource-manager` (novo) — `Semaphore` (concorrência justa FIFO, slot
+      transferido no release → sem sobre-subscrição), `withTimeout`/`TimeoutError`,
+      `Budget`, e a fachada `ResourceManager.run()`.
+- [x] `@clover/executor` — hook opcional `verifyToken`: token forjado/ampliado/expirado
+      → plano falha com `capability_denied` antes de qualquer execução (defesa para
+      tools fora do processo). Backward-compatible (sem hook = comportamento antigo).
+- [x] `@clover/kernel` — passa a usar `@clover/capability` (mint com os descritores das
+      tools; engine recebe o `verifyToken`).
+
+**Verificação (executada):**
+- `capability` **6/6** (menor privilégio; verify de token válido; **rejeita token
+  adulterado**; rejeita expirado; rejeita assinatura com segredo errado; authorize só
+  o concedido).
+- `resource-manager` **6/6** (concorrência nunca excede o limite; release libera slot
+  em erro; timeout; budget recusa estouro sem consumir; serialização sob
+  `maxConcurrent=1`).
+- Regressão completa: **31/31** (capability 6, resource-manager 6, kernel 5, planner 6,
+  state 5, scheduler 3); build de **12 pacotes** → exit 0.
+
+---
+
 ## Próximas fatias (planejadas)
 
-- **Fatia 5 — Segurança real (Fase 2):** `@clover/capability` (resolver dedicado +
-  assinatura), `@clover/resource-manager`, `@clover/sandbox` (Tier 1 isolated-vm /
-  Tier 2 WASM / Tier 3 processo). *Risco: builds nativos (`isolated-vm`/`wasmtime`)
-  — validar disponibilidade no ambiente antes; degradar para Tier 3 se necessário.*
-- **Fatia 6 — Cognição em escala:** `@clover/context-builder`, `@clover/tool-search`
+- **Fatia 6 — Sandbox (resto da Fase 2):** `@clover/sandbox` com Tier 3 (`child_process`
+  endurecido — built-in, sem dep nativa: timeout/SIGKILL, cwd no workspace, argv sem
+  shell → sem injeção) primeiro; depois Tier 1 `isolated-vm` e Tier 2 WASM. *Risco:
+  builds nativos (`isolated-vm`/`wasmtime`) — **validar disponibilidade no ambiente
+  antes**; se falhar, entregar só o Tier 3 e fazer Yield com diagnóstico.* Wire do
+  `ResourceManager` no Scheduler/Executor entra aqui.
+- **Fatia 7 — Cognição em escala:** `@clover/context-builder`, `@clover/tool-search`
   (descoberta semântica), `@clover/agent-runtime` (atores). Fecha Fase 3.
