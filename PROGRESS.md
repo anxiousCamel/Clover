@@ -231,13 +231,49 @@ Pacotes/mudanças:
 
 ---
 
+### Fatia 6 — Sandbox Tier 3 (processo endurecido) — ✅ CONCLUÍDA
+Objetivo: corrigir o núcleo de P3 (exec-guard inseguro) com isolamento de processo
+real, **sem dependência nativa**.
+
+Pacote:
+- [x] `@clover/sandbox` — `SandboxBackend` (interface para os 3 tiers) + `ProcessSandbox`
+      (Tier 3): **argv sem shell** (sem injeção), **fronteira de workspace** por path
+      canônico (bloqueia `..` e absoluto), **timeout + SIGKILL**, **env mínimo** (não
+      herda o ambiente), **gate de capability** `proc.exec` (argv[0] na allowlist),
+      e cap de buffer de saída (anti-OOM).
+
+**Verificação (executada):** antes de codar, **probe confirmou** que `spawn` funciona
+no ambiente (`child-ok`). Testes **5/5**: roda comando permitido e captura stdout;
+**metacaracteres chegam literais (sem injeção)**; processo que estoura o timeout é
+morto (`timedOut`, exitCode null); programa fora de `proc.exec` é negado; `cwd` fora do
+workspace é bloqueado. Regressão completa: **36/36** (capability 6, resource-manager 6,
+sandbox 5, kernel 5, planner 6, state 5, scheduler 3); build de **13 pacotes** → exit 0.
+
+**Decisão (registrada):** Tiers 1 (`isolated-vm`) e 2 (WASM/`wasmtime`) **adiados** —
+exigem build nativo. NÃO tentei instalar agora: o Tier 3 é um entregável completo e não
+compromete a integridade, então não há motivo para Yield; um build nativo lento/falho
+só desperdiçaria ciclos. A validação do `isolated-vm`/`wasmtime` (com Yield se falhar)
+é um passo deliberado da próxima fatia de sandbox. Limites finos de CPU/RAM dependem
+desses tiers (cgroups/fuel); o Tier 3 entrega timeout de parede + isolamento de
+processo.
+
+---
+
+## Estado consolidado (Fases 0–2)
+
+| Fase | Cobertura entregue |
+|---|---|
+| **0 — Fundações** | Event Bus (`event-bus`), Event Store + projeções + replay (`state`), Scheduler durável + resume (`scheduler`). ✅ núcleo |
+| **1 — IR + Determinismo** | Plan IR + validator (`ir`), IR VM / DAG runner (`executor`), Planner sob constrained decoding (`planner` + `llm`). ✅ núcleo |
+| **2 — Segurança** | Capabilities assinadas (`capability`), Resource Manager (`resource-manager`), Sandbox Tier 3 (`sandbox`). ✅ núcleo; Tiers 1/2 (nativo) e wire do RM no Scheduler pendentes |
+
+**13 pacotes · 36 testes verdes · `tsc --build` exit 0.**
+
 ## Próximas fatias (planejadas)
 
-- **Fatia 6 — Sandbox (resto da Fase 2):** `@clover/sandbox` com Tier 3 (`child_process`
-  endurecido — built-in, sem dep nativa: timeout/SIGKILL, cwd no workspace, argv sem
-  shell → sem injeção) primeiro; depois Tier 1 `isolated-vm` e Tier 2 WASM. *Risco:
-  builds nativos (`isolated-vm`/`wasmtime`) — **validar disponibilidade no ambiente
-  antes**; se falhar, entregar só o Tier 3 e fazer Yield com diagnóstico.* Wire do
-  `ResourceManager` no Scheduler/Executor entra aqui.
-- **Fatia 7 — Cognição em escala:** `@clover/context-builder`, `@clover/tool-search`
-  (descoberta semântica), `@clover/agent-runtime` (atores). Fecha Fase 3.
+- **Fatia 7 — Cognição em escala (Fase 3):** `@clover/context-builder` (montagem de
+  contexto sob orçamento de tokens), `@clover/tool-search` (descoberta semântica de
+  tools), `@clover/agent-runtime` (atores). Puro JS → sem risco.
+- **Fatia 8 — Sandbox nativo + wiring:** Tier 1 `isolated-vm`, Tier 2 WASM; wire do
+  `ResourceManager` no Scheduler (concorrência/timeout por task). *Risco: build
+  nativo — validar e fazer Yield se indisponível.*
