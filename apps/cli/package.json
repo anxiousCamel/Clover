@@ -1,0 +1,42 @@
+{
+  "name": "@clover/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "clover": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@clover/agent": "workspace:*",
+    "@clover/ast-index": "workspace:*",
+    "@clover/blackboard": "workspace:*",
+    "@clover/config": "workspace:*",
+    "@clover/context-builder": "workspace:*",
+    "@clover/contracts": "workspace:*",
+    "@clover/i18n": "workspace:*",
+    "@clover/kernel": "workspace:*",
+    "@clover/knowledge-graph": "workspace:*",
+    "@clover/knowledge-retriever": "workspace:*",
+    "@clover/llm": "workspace:*",
+    "@clover/planner": "workspace:*",
+    "@clover/resource-manager": "workspace:*",
+    "@clover/sandbox": "workspace:*",
+    "@clover/scheduler": "workspace:*",
+    "@clover/state": "workspace:*",
+    "@clover/tool-search": "workspace:*",
+    "@clover/tui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}

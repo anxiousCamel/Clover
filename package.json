@@ -8,6 +8,11 @@
     "cli": "pnpm --filter @clover/backend run cli",
     "ui": "pnpm --parallel --filter @clover/backend --filter @clover/ui run dev",
     "build": "pnpm -r run build",
+    "clover": "pnpm --filter @clover/cli run start",
+    "clover:dev": "pnpm --filter @clover/cli run dev",
+    "clover:setup": "pnpm --filter @clover/cli run start setup",
+    "build:os": "tsc --build apps/cli/tsconfig.json",
+    "test:os": "pnpm --filter \"@clover/*\" --filter @clover/cli -r run test",
     "health": "bash scripts/health-check.sh",
     "typecheck": "tsc --build"
   },
