@@ -68,6 +68,50 @@ export async function promptChoice(
 }
 
 /**
+ * Lê um segredo (API key) em **raw mode** com **bloqueio visual**: cada caractere
+ * vira `*` e o valor real nunca aparece no histórico da tela. Enter confirma,
+ * Ctrl-C/Esc cancela (retorna null).
+ */
+export async function promptSecret(question: string, theme: ThemeManager): Promise<string | null> {
+  if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
+    render(theme.warn('Sem TTY: não é seguro digitar segredos aqui.'));
+    return null;
+  }
+  return new Promise((resolve) => {
+    stdout.write(`${theme.accent(question)}: `);
+    let buf = '';
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    const cleanup = (): void => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.off('data', onData);
+    };
+    const onData = (ch: string): void => {
+      if (ch === '\r' || ch === '\n') {
+        cleanup();
+        stdout.write('\n');
+        resolve(buf);
+      } else if (ch === '\x03' || ch === '\x1b') {
+        cleanup();
+        stdout.write('\n');
+        resolve(null);
+      } else if (ch === '\x7f' || ch === '\b') {
+        if (buf.length > 0) {
+          buf = buf.slice(0, -1);
+          stdout.write('\b \b');
+        }
+      } else if (ch >= ' ') {
+        buf += ch;
+        stdout.write('*'); // bloqueio visual
+      }
+    };
+    stdin.on('data', onData);
+  });
+}
+
+/**
  * Spinner de linha única (anti-freeze) com rótulo dinâmico de "raciocínio vivo".
  * `label()` é reavaliado a cada frame (pode refletir fase atual + atores ativos).
  */

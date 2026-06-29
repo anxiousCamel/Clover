@@ -11,23 +11,25 @@ import process from 'node:process';
 
 import { Agent } from '@clover/agent';
 import { Blackboard } from '@clover/blackboard';
+import { ConfigStore } from '@clover/config';
 import { ContextBuilder } from '@clover/context-builder';
 import type { CapabilityToken, Goal } from '@clover/contracts';
+import { createI18n, LANGUAGES, type Lang } from '@clover/i18n';
 import { createKernel, demoTools } from '@clover/kernel';
 import type { LlmProvider, StructuredRequest } from '@clover/llm';
-import { OllamaProvider } from '@clover/llm';
+import { OllamaProvider, OpenAiCompatibleAdapter } from '@clover/llm';
 import { Planner } from '@clover/planner';
 import { ResourceManager } from '@clover/resource-manager';
 import { ProcessSandbox } from '@clover/sandbox';
 import { DurableScheduler } from '@clover/scheduler';
 import { EventStore } from '@clover/state';
 import { LexicalToolSearch } from '@clover/tool-search';
-import { StatusBoard, UsageCounter, createTheme, phaseLabel } from '@clover/tui';
+import { ChoicePrompt, StatusBoard, UsageCounter, createTheme, phaseLabel } from '@clover/tui';
 
 import { ModelRegistry, ReplEngine, buildExecConfirmation } from './repl-engine.js';
 import { installResilience } from './resilience.js';
 import { renderSteps, runSetup, type SetupProbes } from './setup.js';
-import { clearScreen, createLineReader, promptChoice, render, withSpinner } from './terminal.js';
+import { clearScreen, createLineReader, promptChoice, promptSecret, render, withSpinner } from './terminal.js';
 
 /** Localiza a raiz do monorepo subindo até achar pnpm-workspace.yaml. */
 function findRepoRoot(start: string): string {
@@ -144,6 +146,9 @@ function cmdHelp(): void {
       '',
       theme.heading('Comandos do REPL'),
       '  /help · /model [nome] · /status · /clear · /exit',
+      '  /config           painel interativo (idioma, modelo, log, modo)',
+      '  /mode [step|auto] alterna a autonomia (confirmações)',
+      '  /provider         adiciona/ativa um provedor (OpenRouter/OpenAI/Groq/...)',
       '  /exec <comando>   roda no Sandbox Tier 3 (pede autorização)',
     ].join('\n'),
   );
@@ -151,6 +156,8 @@ function cmdHelp(): void {
 
 async function cmdRepl(): Promise<void> {
   const theme = createTheme();
+  const config = new ConfigStore();
+  const i18n = createI18n(config.getValue('language'));
   const blackboard = new Blackboard({ filePath: join(ROOT, '.clover', 'blackboard.jsonl') });
 
   // Resiliência: nada de stack trace cru; persiste no Blackboard e sai limpo.
@@ -158,14 +165,25 @@ async function cmdRepl(): Promise<void> {
 
   const kernel = createKernel(demoTools);
   const scheduler = new DurableScheduler(kernel, new EventStore({ filePath: join(ROOT, '.clover', 'journal.jsonl') }));
-  const models = new ModelRegistry(loadModels(), DEFAULT_MODEL);
+  const models = new ModelRegistry(loadModels(), config.getValue('defaultModel'));
   const usage = new UsageCounter();
 
-  // Provider que respeita o modelo ativo (trocável via /model).
+  // Provider DINÂMICO: lê o provedor ativo da config a cada chamada — Ollama ou
+  // qualquer OpenAI-compatible (OpenRouter/Groq/DeepSeek/OpenAI).
   const provider: LlmProvider = {
-    name: 'ollama',
-    completeStructured: (req: StructuredRequest) =>
-      new OllamaProvider({ host: OLLAMA_HOST, model: models.current }).completeStructured(req),
+    name: 'dynamic',
+    completeStructured: (req: StructuredRequest) => {
+      const pc = config.activeProviderConfig();
+      if (pc.kind === 'openai-compatible' && pc.baseURL) {
+        return new OpenAiCompatibleAdapter({
+          baseURL: pc.baseURL,
+          apiKey: pc.apiKey,
+          model: pc.model ?? models.current,
+          supportsStructuredOutputs: pc.supportsStructuredOutputs,
+        }).completeStructured(req);
+      }
+      return new OllamaProvider({ host: pc.baseURL ?? OLLAMA_HOST, model: pc.model ?? models.current }).completeStructured(req);
+    },
   };
 
   const agent = new Agent({
@@ -181,10 +199,12 @@ async function cmdRepl(): Promise<void> {
 
   const engine = new ReplEngine({
     theme,
+    i18n,
     io: { render, clear: clearScreen },
     agent,
     kernel,
     blackboard,
+    config,
     models,
     usage,
     workspacePath: ROOT,
@@ -203,6 +223,14 @@ async function cmdRepl(): Promise<void> {
 
     if (line.startsWith('/exec ')) {
       await handleExec(line.slice(6).trim());
+      continue;
+    }
+    if (line === '/config') {
+      await handleConfig();
+      continue;
+    }
+    if (line === '/provider') {
+      await handleProvider();
       continue;
     }
 
@@ -228,17 +256,56 @@ async function cmdRepl(): Promise<void> {
   }
 
   reader.close();
-  render(theme.success(`${theme.symbols.clover} Sessão encerrada.`));
+  render(theme.success(`${theme.symbols.clover} ${i18n.t('repl.sessionEnded')}`));
+
+  // Painel de configuração (raw mode, setas — sem vazar input).
+  async function handleConfig(): Promise<void> {
+    const fields = [
+      { value: 'language', label: i18n.t('config.language'), choices: LANGUAGES.map((l) => ({ label: l, value: l })) },
+      { value: 'defaultModel', label: i18n.t('config.defaultModel'), choices: models.list().map((m) => ({ label: m, value: m })) },
+      { value: 'logLevel', label: i18n.t('config.logLevel'), choices: ['silent', 'info', 'debug'].map((v) => ({ label: v, value: v })) },
+      { value: 'mode', label: i18n.t('config.mode'), choices: [{ label: 'step', value: 'step' }, { label: 'auto', value: 'auto' }] },
+    ];
+    const pick = await promptChoice(
+      new ChoicePrompt(i18n.t('config.pickField'), fields.map((f) => ({ label: f.label, value: f.value }))),
+      theme,
+    );
+    if (pick.cancelled || !pick.value) return render(theme.dim(i18n.t('config.cancelled')));
+    const field = fields.find((f) => f.value === pick.value)!;
+    const choice = await promptChoice(new ChoicePrompt(i18n.t('config.pickValue', { field: field.label }), field.choices), theme);
+    if (choice.cancelled || !choice.value) return render(theme.dim(i18n.t('config.cancelled')));
+    (config.set as (k: string, v: unknown) => void)(field.value, choice.value);
+    if (field.value === 'language') i18n.setLang(choice.value as Lang);
+    render(theme.success(`${theme.symbols.ok} ${i18n.t('config.saved', { path: config.path() })}`));
+  }
+
+  // Adiciona um provedor de nuvem; a API Key é digitada com bloqueio visual.
+  async function handleProvider(): Promise<void> {
+    const name = (await reader.question(`${theme.accent(i18n.t('provider.addName'))}: `)).trim();
+    if (!name) return render(theme.dim(i18n.t('provider.cancelled')));
+    const baseURL = (await reader.question(`${theme.accent(i18n.t('provider.baseUrl'))}: `)).trim();
+    const apiKey = await promptSecret(i18n.t('provider.apiKey'), theme);
+    if (apiKey === null) return render(theme.dim(i18n.t('provider.cancelled')));
+    const sup = await promptChoice(
+      new ChoicePrompt('Structured outputs?', [{ label: 'yes', value: 'yes' }, { label: 'no', value: 'no' }]),
+      theme,
+    );
+    config.setProvider(name, { kind: 'openai-compatible', baseURL, apiKey, supportsStructuredOutputs: sup.value === 'yes' });
+    config.setActiveProvider(name);
+    render(theme.success(`${theme.symbols.ok} ${i18n.t('provider.saved', { name })}`));
+  }
 
   async function handleExec(command: string): Promise<void> {
     if (!command) {
-      render(theme.warn('Uso: /exec <comando>'));
+      render(theme.warn(i18n.t('exec.usage')));
       return;
     }
-    if (!alwaysExec) {
-      const choice = await promptChoice(buildExecConfirmation(command), theme);
+    // Modo auto: confia nas barreiras programáticas (sem confirmação manual).
+    const auto = config.getValue('mode') === 'auto';
+    if (!auto && !alwaysExec) {
+      const choice = await promptChoice(buildExecConfirmation(command, i18n), theme);
       if (choice.cancelled || choice.value === 'cancel') {
-        render(theme.dim('Execução cancelada.'));
+        render(theme.dim(i18n.t('exec.cancelled')));
         return;
       }
       if (choice.value === 'always') alwaysExec = true;

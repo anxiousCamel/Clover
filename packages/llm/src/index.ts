@@ -109,3 +109,69 @@ export class OllamaProvider implements LlmProvider {
     }
   }
 }
+
+export interface OpenAiCompatibleOptions {
+  /** Ex.: https://openrouter.ai/api/v1 · https://api.openai.com/v1 · Groq · DeepSeek */
+  baseURL: string;
+  apiKey?: string;
+  model?: string;
+  /** O provedor suporta structured outputs (response_format json_schema)? */
+  supportsStructuredOutputs?: boolean;
+  timeoutMs?: number;
+  /** Injeção de fetch (testes). */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Adapter universal para qualquer provedor **OpenAI-compatible** (OpenRouter,
+ * Groq, DeepSeek, OpenAI, ...). Basta trocar `baseURL` + `apiKey`. A injeção da
+ * gramática/IR é adaptada graciosamente: usa `response_format: json_schema`
+ * quando o provedor suporta structured outputs; senão cai para `json_object` +
+ * o schema embutido no prompt (degradação limpa, sem quebrar a tese do ADR-004).
+ */
+export class OpenAiCompatibleAdapter implements LlmProvider {
+  readonly name = 'openai-compatible';
+
+  constructor(private readonly opts: OpenAiCompatibleOptions) {}
+
+  async completeStructured(req: StructuredRequest): Promise<string> {
+    const model = req.model ?? this.opts.model ?? 'gpt-4o-mini';
+    const doFetch = this.opts.fetchImpl ?? fetch;
+    const messages: Array<{ role: string; content: string }> = [];
+
+    let responseFormat: Record<string, unknown>;
+    if (this.opts.supportsStructuredOutputs) {
+      responseFormat = {
+        type: 'json_schema',
+        json_schema: { name: 'clover_plan', schema: req.schema, strict: true },
+      };
+      if (req.system) messages.push({ role: 'system', content: req.system });
+    } else {
+      responseFormat = { type: 'json_object' };
+      const schemaHint = `Responda APENAS com JSON válido que satisfaça este schema: ${JSON.stringify(req.schema)}`;
+      messages.push({ role: 'system', content: `${req.system ?? ''}\n${schemaHint}`.trim() });
+    }
+    messages.push({ role: 'user', content: req.prompt });
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.opts.timeoutMs ?? 120_000);
+    try {
+      const res = await doFetch(`${this.opts.baseURL.replace(/\/+$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {}),
+        },
+        body: JSON.stringify({ model, messages, response_format: responseFormat, stream: false }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        throw new Error(`OpenAiCompatibleAdapter: HTTP ${res.status} ${res.statusText}`);
+      }
+      const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      return json.choices?.[0]?.message?.content ?? '';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}

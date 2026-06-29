@@ -21,6 +21,8 @@
     { "path": "../../packages/contracts" },
     { "path": "../../packages/tui" },
     { "path": "../../packages/blackboard" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/i18n" },
     { "path": "../../packages/kernel" },
     { "path": "../../packages/agent" },
     { "path": "../../packages/scheduler" },
