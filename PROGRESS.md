@@ -374,19 +374,53 @@ sob pipe (mostra `*`/`[ok]`).
 
 ---
 
-## Estado consolidado (Fases 0–4 + Ecossistema DX) — FUNDAÇÃO DO ECOSSISTEMA CONCLUÍDA
+## Mandato de Execução Contínua — Produto, Autonomia e Ecossistema Aberto — ✅ CONCLUÍDO (Fase de Produto e UX)
+
+Executado de ponta a ponta, sem yields, sem quebrar testes anteriores.
+
+### Escopo 1 — i18n + `/config`
+- `@clover/config` (**5/5**): config global em `~/.cloveros/config.json` (dir 0700,
+  arquivo **0600**) — idioma/modelo/logLevel/modo/provedores; merge com defaults.
+- `@clover/i18n` (**5/5**): dicionários **EN + PT-BR** + `t(key,vars)`; idioma vem da
+  config. Strings do CLI movidas para o dicionário (PT-BR preservado → sem quebra).
+- `/config`: painel interativo em **raw mode** (setas) p/ idioma, modelo, log e modo.
+
+### Escopo 2 — Modos de Autonomia (`/mode`)
+- `/mode step` (padrão): confirmação contextual por teclado p/ ações Tier 3.
+- `/mode auto`: sem confirmações; confia nas **barreiras programáticas** (orçamento,
+  `maxTurns`, timeout). Ao bater o teto → **suspende a task, salva no Blackboard,
+  notifica no REPL**. Roteamento `step`×`auto` coberto por testes (**cli 21/21**).
+
+### Escopo 3 — Provedores de nuvem + credenciais seguras
+- `@clover/llm` `OpenAiCompatibleAdapter` (**4/4**): ponte universal
+  (OpenRouter/Groq/DeepSeek/OpenAI); structured outputs via `json_schema` quando
+  suportado, **degradação graciosa** p/ `json_object` + schema no prompt; `fetch`
+  injetável.
+- `/provider`: adiciona provedor com **API Key mascarada** (raw mode, `*` — não vaza)
+  salva em `~/.cloveros/config.json` (0600). O Agent lê o provedor **dinamicamente**.
+
+### Restrições atendidas
+- Tema **Clover 🍀** mantido em todos os menus novos.
+- Interceptação de caminhos de arquivo/imagem **preservada** (teste de regressão).
+- Testes do `OpenAiCompatibleAdapter` e do roteamento de modos adicionados.
+- README atualizado (guia do REPL + setup OpenRouter/OpenAI/Groq/DeepSeek).
+
+---
+
+## Estado consolidado (Fases 0–4 + Produto/UX) — FASE DE PRODUTO E UX CONCLUÍDA
 
 | Fase | Cobertura entregue |
 |---|---|
 | **0 — Fundações** | `event-bus`, `state` (event store + replay), `scheduler` (durável + resume), `blackboard`. ✅ |
-| **1 — IR + Determinismo** | `ir`, `executor`, `planner` + `llm` (constrained decoding). ✅ |
+| **1 — IR + Determinismo** | `ir`, `executor`, `planner` + `llm` (constrained decoding; **+ OpenAI-compatible**). ✅ |
 | **2 — Segurança** | `capability` (assinada), `resource-manager`, `sandbox` Tier 3. ✅ núcleo; Tiers 1/2 nativos **no backlog** |
 | **3 — Cognição em escala** | `tool-search`, `context-builder`, `agent-runtime`. ✅ |
 | **4 — Conhecimento** | `ast-index`, `knowledge-graph`, `knowledge-retriever`. ✅ núcleo; tree-sitter multi-lang no backlog |
 | **Wiring** | `@clover/agent` (Context → Planner → Scheduler/RM, com retrieval estrutural). ✅ |
-| **DX / Produto** | `@clover/tui` + `apps/cli` (REPL, setup, resiliência, tema, README). ✅ |
+| **DX / Produto** | `@clover/tui` + `apps/cli` (REPL, setup, resiliência, tema). ✅ |
+| **Produto / UX** | `@clover/config` + `@clover/i18n` + `/config`/`/mode`/`/provider` + provedores de nuvem. ✅ |
 
-**22 pacotes + `apps/cli` · 103 testes verdes (17 suítes) · `tsc --build` exit 0.**
+**24 pacotes + `apps/cli` · 121 testes verdes (20 suítes) · `tsc --build` exit 0.**
 
 ## Backlog técnico (postergado, sem bloqueio)
 

@@ -73,10 +73,28 @@ A continuous chat loop. Type a task in natural language, or use a slash command.
 |---|---|
 | `/help` | Show the command guide |
 | `/model [name]` | List models, or switch the active model |
-| `/status` | Kernel health (registered tools), active model, Blackboard stats, token usage |
+| `/status` | Kernel health, active model & **provider**, **mode**, **language**, Blackboard stats, token usage |
+| `/config` | **Interactive config panel** (raw mode, arrow keys): language, default model, log level, mode |
+| `/mode [step\|auto]` | Switch **autonomy** (see below) |
+| `/provider` | Add/activate a **cloud provider** (OpenRouter/OpenAI/Groq/…) — API key entered **masked** |
 | `/clear` | Clear the screen |
-| `/exec <command>` | Run a command in the **Tier-3 sandbox** (asks for contextual authorization) |
+| `/exec <command>` | Run a command in the **Tier-3 sandbox** (asks for contextual authorization in `step` mode) |
 | `/exit` | Leave the REPL |
+
+### Autonomy modes (`/mode`)
+
+- **`step`** (default): interactive. Destructive / Tier-3 actions ask for a
+  **contextual** confirmation via keyboard before running.
+- **`auto`**: uninterrupted. No manual confirmations — the system trusts the
+  **programmatic safety barriers** (token budget, `maxTurns`, timeouts). If a task
+  hits a safety ceiling, it is **suspended**, its state is **persisted to the
+  Blackboard** (for Scheduler recovery), and you're notified in the REPL.
+
+### Languages (i18n)
+
+CloverOS ships **English** and **Português (BR)**. Switch via `/config → Language`
+(or set `language` in `~/.cloveros/config.json`). All REPL strings come from
+`@clover/i18n`.
 
 Anything else is treated as a **task** for the agent:
 
@@ -101,6 +119,38 @@ All colors/symbols live in one place (`@clover/tui` `ThemeManager`). The UI degr
 cleanly: it drops ANSI colors on non-TTY/`NO_COLOR`, and switches to ASCII symbols
 when the terminal isn't UTF-8 (or when `CLOVER_ASCII=1`), so output never turns to
 visual garbage.
+
+---
+
+## Cloud providers (OpenRouter / OpenAI / Groq / DeepSeek)
+
+CloverOS plugs into any **OpenAI-compatible** API via a single adapter — just a
+`baseURL` + `apiKey`. Constrained generation is preserved: structured outputs
+(`response_format: json_schema`) are used when the provider supports them, with a
+graceful `json_object` + schema-in-prompt fallback otherwise.
+
+Add one from the REPL (the API key is typed **masked**, never echoed, and saved
+to `~/.cloveros/config.json` with `0600` perms — outside the project):
+
+```
+🍀 > /provider
+Provider name (e.g. openrouter): openrouter
+Base URL (e.g. https://openrouter.ai/api/v1): https://openrouter.ai/api/v1
+API Key (hidden input): ****************
+Structured outputs? ❯ yes
+```
+
+Common base URLs:
+
+| Provider | Base URL |
+|---|---|
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| OpenAI | `https://api.openai.com/v1` |
+| Groq | `https://api.groq.com/openai/v1` |
+| DeepSeek | `https://api.deepseek.com/v1` |
+
+The active provider is read **dynamically** from config — switching takes effect
+on the next task, no restart needed. Ollama remains the default (local, offline).
 
 ---
 
@@ -183,6 +233,10 @@ pnpm --filter "@clover/*" -r run test
 | `CLOVER_MODEL` | `qwen2.5-coder` | Default model for planning |
 | `NO_COLOR` | — | Disable ANSI colors |
 | `CLOVER_ASCII` | — | Force ASCII symbols (no emoji/unicode) |
+
+Persistent user settings (language, default model, log level, autonomy mode, and
+cloud-provider credentials) live in **`~/.cloveros/config.json`** (file mode
+`0600`), edited via `/config` and `/provider`.
 
 ---
 
