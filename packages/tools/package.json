@@ -18,15 +18,17 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@clover/ast-index": "workspace:*",
     "@clover/contracts": "workspace:*",
     "@clover/sandbox": "workspace:*",
     "@clover/tool-abi": "workspace:*",
+    "sql.js": "^1.14.1",
+    "typescript": "^5.6.3",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "typescript": "^5.6.3",
     "vitest": "^2.1.9"
   }
 }

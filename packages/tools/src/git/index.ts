@@ -455,6 +455,42 @@ export const gitRevertTool: LocalTool = defineZodTool({
   },
 });
 
+// ===========================================================================
+// git_clean
+// ===========================================================================
+
+export const gitCleanTool: LocalTool = defineZodTool({
+  name: 'git_clean',
+  description:
+    'Remove arquivos/diretórios NÃO rastreados (`git clean -fd`). Respeita `.gitignore` ' +
+    '(não toca ignorados como node_modules). ATENÇÃO: remove TODOS os untracked da working ' +
+    'tree — não só os de uma tentativa específica. Complementa `git_restore` no rollback total.',
+  input: z
+    .object({
+      dryRun: z.boolean().optional().describe('Só reporta o que removeria (`-n`), sem apagar.'),
+      cwd: CwdInput,
+    })
+    .strict(),
+  output: z.object({
+    removed: z.array(z.string()).describe('Caminhos removidos (ou que seriam removidos em dryRun).'),
+    dryRun: z.boolean(),
+  }),
+  capabilities: GIT_EXEC,
+  intent: 'destructive',
+  pure: false,
+  run: async (args, ctx) => {
+    const cwd = resolveCwd(ctx, args.cwd);
+    const flags = args.dryRun ? ['clean', '-fdn'] : ['clean', '-fd'];
+    const res = await runGit(ctx, flags, { cwd });
+    // Saída: "Removing <path>" (ou "Would remove <path>" com -n), uma por linha.
+    const removed = res.stdout
+      .split('\n')
+      .map((l) => l.replace(/^(Removing|Would remove)\s+/, '').trim())
+      .filter((l) => l.length > 0);
+    return { removed, dryRun: args.dryRun ?? false };
+  },
+});
+
 /** Todas as tools do namespace git/. */
 export const gitTools: LocalTool[] = [
   gitStatusTool,
@@ -468,6 +504,7 @@ export const gitTools: LocalTool[] = [
   gitCheckoutBranchTool,
   gitRestoreTool,
   gitRevertTool,
+  gitCleanTool,
 ];
 
 // Utilitários internos reexportados para reuso por futuras tools git.

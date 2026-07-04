@@ -30,6 +30,8 @@ export interface AstSymbol {
   filePath: string;
   /** Linha 1-based. */
   line: number;
+  /** Última linha da declaração (1-based) — base para métricas de tamanho. */
+  endLine?: number;
   exported: boolean;
   /** Container (ex.: nome da classe para métodos). */
   container?: string;
@@ -85,9 +87,10 @@ export class TypeScriptAstParser implements AstParser {
     const symbols: AstSymbol[] = [];
     const imports: AstImport[] = [];
     const lineOf = (node: ts.Node): number => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+    const endLineOf = (node: ts.Node): number => sf.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
 
     const add = (name: string, kind: SymbolKind, node: ts.Node, exported: boolean, container?: string): void => {
-      symbols.push({ name, kind, filePath, line: lineOf(node), exported, container });
+      symbols.push({ name, kind, filePath, line: lineOf(node), endLine: endLineOf(node), exported, container });
     };
 
     const visit = (node: ts.Node): void => {

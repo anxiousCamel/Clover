@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,6 +18,7 @@ import type { CapabilityToken, ToolInvocation } from '@clover/contracts';
 
 import {
   gitCheckoutBranchTool,
+  gitCleanTool,
   gitCommitTool,
   gitRestoreTool,
   gitRevertTool,
@@ -209,5 +210,29 @@ describe.skipIf(!HAS_GIT)('git/ write tools (handler direto + Sandbox Tier 3)', 
     const res = await gitRevertTool.handler({ commit: '--abort' }, ctx());
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/inválida/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // git_clean
+  // ---------------------------------------------------------------------------
+
+  it('git_clean dryRun reporta untracked sem apagar; real remove', async () => {
+    writeFileSync(join(dir, 'clean-me.txt'), 'lixo\n');
+
+    // dryRun: reporta mas não apaga.
+    const dry = await gitCleanTool.handler({ dryRun: true }, ctx());
+    expect(dry.success).toBe(true);
+    const dryOut = dry.output as { removed: string[]; dryRun: boolean };
+    expect(dryOut.dryRun).toBe(true);
+    expect(dryOut.removed).toContain('clean-me.txt');
+    expect(existsSync(join(dir, 'clean-me.txt'))).toBe(true);
+
+    // real: remove de fato.
+    const res = await gitCleanTool.handler({}, ctx());
+    expect(res.success).toBe(true);
+    const out = res.output as { removed: string[]; dryRun: boolean };
+    expect(out.dryRun).toBe(false);
+    expect(out.removed).toContain('clean-me.txt');
+    expect(existsSync(join(dir, 'clean-me.txt'))).toBe(false);
   });
 });

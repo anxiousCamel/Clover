@@ -90,7 +90,7 @@ export const writeFileTool: LocalTool = defineZodTool({
 export const patchFileTool: LocalTool = defineZodTool({
   name: 'patch_file',
   description:
-    'Edição cirúrgica por search/replace (literal) — modifica lógica sem reescrever o arquivo inteiro (economiza orçamento). Operação de ESCRITA.',
+    'Edição cirúrgica por search/replace (literal) — modifica lógica sem reescrever o arquivo inteiro (economiza orçamento). Cria backup `.bak` antes de sobrescrever. Operação de ESCRITA.',
   input: z
     .object({
       path: z.string().min(1),
@@ -99,7 +99,12 @@ export const patchFileTool: LocalTool = defineZodTool({
       all: z.boolean().optional().describe('Substituir todas as ocorrências (default: só a primeira).'),
     })
     .strict(),
-  output: z.object({ path: z.string(), replacements: z.number() }),
+  output: z.object({
+    path: z.string(),
+    replacements: z.number(),
+    /** Caminho relativo do backup `.bak` criado antes da sobrescrita. */
+    backup: z.string(),
+  }),
   capabilities: FS_WRITE,
   intent: 'write',
   pure: false,
@@ -107,14 +112,20 @@ export const patchFileTool: LocalTool = defineZodTool({
     const original = readTextInWorkspace(ctx, args.path);
     const count = countOccurrences(original, args.search);
     if (count === 0) {
+      // Falha ANTES de tocar o disco — nenhum backup espúrio em patch malsucedido.
       throw new Error(`patch_file: trecho não encontrado em '${args.path}'`);
     }
     const replacements = args.all ? count : 1;
     const patched = args.all
       ? original.split(args.search).join(args.replace)
       : original.replace(args.search, args.replace);
+    // Backup obrigatório do conteúdo ORIGINAL antes de sobrescrever (mandato FS).
+    // Escrito só após o check acima — patch válido garantido. Passa pela mesma
+    // fronteira de workspace (resolveInWorkspace) que a escrita principal.
+    const backup = `${args.path}.bak`;
+    writeTextInWorkspace(ctx, backup, original);
     writeTextInWorkspace(ctx, args.path, patched);
-    return { path: args.path, replacements };
+    return { path: args.path, replacements, backup };
   },
 });
 

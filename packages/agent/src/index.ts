@@ -17,7 +17,7 @@
  */
 
 import type { Goal, RunResult } from '@clover/contracts';
-import { gitRestoreTool } from '@clover/tools';
+import { gitCleanTool, gitRestoreTool } from '@clover/tools';
 
 export interface HealOptions {
   /** Máximo de tentativas totais (1 original + N re-planejamentos). Default: 2. */
@@ -69,28 +69,34 @@ export interface AgentRunResult {
 }
 
 /**
- * Rollback padrão: descarta todas as alterações na working tree via `git restore`.
- * Falhas silenciosas (repo sem git, tree limpa, etc.) não propagam — o rollback
- * é best-effort; o sinal de falha de build já está no resultado devolvido ao caller.
+ * Rollback padrão (total): descarta TODAS as alterações da working tree.
+ *
+ *   1. `git restore -- .` reverte modificações de arquivos rastreados;
+ *   2. `git clean -fd` remove arquivos/dirs NÃO rastreados que a tentativa falha
+ *      tenha criado (respeita `.gitignore`) — sem isso, o passo 1 deixaria lixo.
+ *
+ * Só é chamado no **caminho de falha final** do loop de auto-cura (nunca entre
+ * tentativas). Best-effort: falhas (repo sem git, tree limpa) não propagam — o
+ * sinal de falha de build já está no resultado devolvido ao caller.
  */
 async function defaultRollback(workspacePath: string, taskId: string): Promise<void> {
-  await gitRestoreTool.handler(
-    { paths: ['.'] },
-    {
+  const ctx = {
+    taskId,
+    traceId: 'auto-rollback',
+    workspacePath,
+    token: {
+      id: `rollback-${taskId}`,
       taskId,
-      traceId: 'auto-rollback',
-      workspacePath,
-      token: {
-        id: `rollback-${taskId}`,
-        taskId,
-        caps: [{ kind: 'proc.exec', argv0Allow: ['git'], maxProcs: 1 }],
-        issuedAt: Date.now(),
-        expiresAt: Date.now() + 30_000,
-        sig: 'auto-rollback',
-      },
-      emit: () => {},
+      caps: [{ kind: 'proc.exec' as const, argv0Allow: ['git'], maxProcs: 2 }],
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
+      sig: 'auto-rollback',
     },
-  );
+    emit: () => {},
+  };
+  // Tracked: reverte. Untracked: remove. Ordem importa pouco (independentes).
+  await gitRestoreTool.handler({ paths: ['.'] }, ctx);
+  await gitCleanTool.handler({}, ctx);
 }
 
 /**

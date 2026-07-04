@@ -586,6 +586,210 @@ do heal = 10 net novos de heal), `tsc --build` exit 0.
 
 ---
 
+## Fatia — Mandato "Inteligência Absoluta" (Fable 5): profundidade sobre largura
+
+**Contexto:** o mandato pede ~80+ tools em 6 departamentos (Knowledge Base SQLite,
+AST/Language Server, Workspace Index, Research, Binary/PCAP internals, Planning), cada
+uma "real, não-stub, com testes, `tsc --build` e `pnpm run test` exit 0".
+
+**Decisão (profundidade sobre largura):** as restrições do próprio mandato — *"não
+produzir stubs"*, *"implementação real"*, *"possuir testes unitários"*, *"testes exit
+0"* — são **mutuamente exclusivas** com entregar 80+ tools num único turno. Largura em
+um turno violaria exatamente as restrições declaradas. Logo, *execução contínua* =
+enviar fatias **completas + verdes**, uma de cada vez, não tudo de uma vez como stub.
+Esta fatia entrega FASE 0 (robustez FS/auto-cura) + o núcleo real da FASE 2 (AST), com
+o restante honestamente marcado como planejado.
+
+### FASE 0 — Robustez FS + auto-cura (auditoria)
+
+- [x] **`patch_file` cria backup `.bak`** obrigatório do conteúdo original antes de
+      sobrescrever — só *após* o check de "trecho encontrado" (patch malsucedido não
+      deixa `.bak` espúrio). Novo campo `backup` na saída Zod. `write_file` já criava
+      diretórios pais recursivamente (mantido; backup é só do `patch_file`, como o
+      mandato exige). → `test/fs-patch.test.ts` (4 testes).
+- [x] **Rollback real do `runWithHeal` provado.** Os testes de `agent-heal` só provavam
+      o hook `onFinalFailure` (mock injetado). Adicionado teste do caminho **default**
+      (`defaultRollback` → `gitRestoreTool` → `git restore -- .`) contra repo git real
+      com working tree suja, provando o descarte de fato. → `test/agent-rollback-real.test.ts`.
+      **Limitação conhecida documentada:** `git restore` reverte arquivos rastreados mas
+      não remove *untracked* criados por uma tentativa falha (precisaria de `git clean`).
+
+### FASE 2 — Departamento AST (núcleo real, sintático)
+
+- [x] **`ast/parse.ts`** — motor puro via TS Compiler API (`ts.createSourceFile`), SRP
+      (só AST, sem I/O nem Zod). Determinístico. Extrai imports (4 formas), exports (5
+      formas), classes (herança/implements/abstract/decorators/membros), interfaces,
+      funções (decl + arrow, async, params), variáveis, enums, type aliases, decorators.
+- [x] **4 tools** (`ast/index.ts`) — `analyze_module`, `query_ast_symbol`,
+      `find_inheritance` (grafo extends/implements, reusa `analyzeSource`),
+      `find_documentation` (JSDoc via `getLeadingCommentRanges`). Todas Zod in/out,
+      `fs.read`, `read` intent, nunca lançam (wrapper ABI → `{ success:false }`).
+      Registradas em `cloverTools`. `typescript` promovido a dependência de runtime.
+      → `test/ast.test.ts` (20 testes).
+
+**Escopo honesto (não é stub, mas tem fronteira declarada):** a análise é
+**single-file e sintática** — sem `Program`/`TypeChecker`/`tsconfig`. Portanto
+`find_references`, `find_type_definition`, `rename_symbol`, callers/callees e resolução
+cross-file **não** estão implementados: exigem o Workspace Index (FASE 2.5) + TypeChecker,
+que é a próxima fatia lógica. O que existe resolve o que está *escrito* no arquivo.
+Cobertura atual do departamento AST: **4 de ~10** tools da FASE 2 (as sintáticas single-file).
+
+### Gaps de contrato documentados (não silenciosamente pulados)
+
+Os "requisitos arquiteturais globais" do mandato pedem **AbortSignal**, **timeout
+configurável** e **emissão de métricas** por tool. O contrato real `ToolInvocation`
+(`@clover/contracts`) hoje **não** carrega `signal`/`timeout` — as tools que executam
+processos dependem do timeout do Sandbox Tier 3. Adicioná-los a *toda* tool é uma
+mudança **transversal** (Executor + Scheduler + construção do ctx + cada tool) e foi
+deliberadamente deixada como fatia própria, para não fazer um refactor de contrato
+pela metade. As novas tools seguem o padrão **real** do código (Zod in/out, capability,
+resultado estruturado sem-throw, testes), não um contrato divergente.
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **74 passed / 4 skipped** (9 suítes; +`fs-patch` 4, +`ast` 20). ✅
+- `@clover/agent` → **13 passed** (+`agent-rollback-real` 2 real-git). ✅
+- `build:os` (`tsc --build apps/cli/tsconfig.json`) → **exit 0**. ✅
+- **Nota:** o `tsc --build` do repositório **inteiro** (`pnpm run typecheck`) está
+  vermelho por erros **pré-existentes** em `apps/backend` (app legado fora do grafo do
+  CloverOS — ex.: `sql.js` sem `@types`, `Config` cast). Não introduzidos por esta
+  fatia (git estava limpo no início) e fora do escopo do mandato (`packages/*` + `cli`).
+
+---
+
+## Fatia — FASE 2.5: Workspace Index + Rollback Total — ✅ CONCLUÍDA
+
+**Mandato:** (1) rollback 100% (`git clean -fd` após `git restore`); (2) índice
+persistente/incremental do workspace em `packages/tools/src/index/` (SQLite), com
+`workspace_index` exposto e `find_references`/`rename_symbol` consultando o índice.
+
+### Ação 1 — Rollback Total (correção de curso)
+
+- [x] **`git_clean`** (intent `destructive`) — `git clean -fd` (`-fdn` em `dryRun`);
+      parseia `Removing <path>`/`Would remove <path>` → `removed[]`. Respeita
+      `.gitignore` (não toca `node_modules` etc.). **Atenção documentada:** remove
+      TODOS os untracked da tree, não só os de uma tentativa.
+- [x] **`defaultRollback` agora é total:** `git restore -- .` (tracked) + `git clean
+      -fd` (untracked), SÓ no caminho de falha final (nunca entre tentativas — uma
+      tentativa seguinte poderia legitimamente reusar artefatos).
+      → teste real-git estendido: arquivo tracked revertido **e** untracked removido.
+
+### Ação 2 — Workspace Index (`packages/tools/src/index/`)
+
+- [x] **Persistência:** `WorkspaceIndexStore` (store.ts) — SQLite via **sql.js** (WASM,
+      zero build nativo; better-sqlite3 NÃO está instalado no repo — sql.js é o motor
+      SQLite já validado pelo backend). In-memory + `export()` → `.clover/index.db`
+      (gitignored via `*.db`). Schema: `files(path,mtime,size)`, `symbols`, `imports`,
+      4 índices. `upsertFile` atômico por path (delete+insert). **`ORDER BY` em toda
+      consulta** (determinismo — ordem de linha SQLite é indefinida sem ele).
+      Declaração ambiente `sql-js.d.ts` mínima (não há `@types/sql.js`).
+      Risco de integração de-riscado ANTES do resto: sql.js provado sob vitest
+      (init WASM + round-trip em disco) em `test/index-store.test.ts`.
+- [x] **Incremental (trigger):** `refreshIndex` (indexer.ts) — walk iterativo, skip
+      `.git/node_modules/dist/.clover/coverage`, reparse **só** se `mtime`+`size`
+      mudaram (verificação de mtime, como o mandato permite — watcher persistente não
+      faz sentido em tools de vida curta); deletados removidos do índice. Extração
+      reusa `TypeScriptAstParser` do `@clover/ast-index` (DRY — parser já existente).
+- [x] **Tools registradas (3):**
+      `workspace_index` — constrói/atualiza o índice, reporta indexed/skipped/removed
+      + stats; `find_references` — definições + sites de import por nome, via índice
+      (zero rescan de AST); `rename_symbol` — **dry-run/preview**: lista sites que
+      mudariam e `applied: false` SEMPRE.
+      → `test/index-workspace.test.ts` (6 testes: stats, incremental skip-total,
+      reindex só do alterado + remoção do deletado, refs def+import, found=false,
+      preview sem tocar arquivo).
+
+### Decisões de escopo (Zero Ficção)
+
+1. **`rename_symbol` não aplica** — rename seguro exige resolução semântica de binding
+   (TypeChecker/Program). Aplicar por match de nome corromperia homônimos não
+   relacionados (ex.: dois `run` em classes diferentes). Preview honesto > escrita
+   perigosa fingindo ser segura. Aplicação entra quando houver camada semântica.
+2. **`find_references` é name-based** — definições + imports pelo identificador
+   (documentado na descrição da tool; o Planner vê a limitação).
+3. **Rotas HTTP/modelos ORM adiados** — não há framework HTTP/ORM no workspace para
+   validar contra código real; implementar padrão-matching às cegas seria ficção.
+4. **Exceção ao invariante #6 documentada** — tools `read` que gravam só o *cache*
+   `.clover/index.db` (não código do usuário) não passam pelo Governor.
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **86 passed / 4 skipped** (11 suítes; +`index-store` 5,
+  +`index-workspace` 6, +`git_clean` 1). ✅
+- `@clover/agent` → **13 passed** (rollback total real-git: tracked revertido +
+  untracked removido). ✅
+- `build:os` → **exit 0** (com `sql.js` + `@clover/ast-index` como novas deps de
+  `@clover/tools`; referência de projeto adicionada ao tsconfig). ✅
+- Registro: **24 tools** em `cloverTools` (era 21).
+
+---
+
+## Fatia — FASE 4.5: Code Intelligence Department — ✅ CONCLUÍDA
+
+**Mandato recebido:** FASES 3 + 4 + 4.5 + 5 (~60 tools). **Decisão (mesmo critério
+aprovado nas fatias anteriores):** profundidade sobre largura — FASE 4.5 primeiro por
+ser a continuação natural do Workspace Index (2.5) e 100% verificável offline.
+
+### Fundação (aditiva, sem quebra de ABI)
+
+- [x] **`@clover/ast-index`**: `AstSymbol.endLine?` (opcional) — span da declaração,
+      base das métricas de tamanho. Testes existentes passam sem mudança.
+- [x] **Store schema v2**: coluna `end_line` + `PRAGMA user_version`; em mismatch de
+      versão, drop+recreate — o índice é CACHE reconstruível (fonte da verdade = código
+      no disco), migração = reindexar. Novas queries (`allImports`, `exportedSymbols`,
+      `symbolsByKinds`), todas com `ORDER BY`.
+
+### Motores puros (SRP)
+
+- [x] **`intelligence/graph.ts`** — resolução de import relativo (`./x.js` ESM →
+      `x.ts` no disco, extensões implícitas, `index.*`), grafo interno vs externos,
+      ciclos via DFS com canonicalização (rotação p/ menor nó) e dedup, deps
+      diretas/reversas. Zero I/O.
+- [x] **`intelligence/scan.ts`** — marcadores (reusa `walkSearch` do dev/ — DRY),
+      `process.env` (2 formas), manifests package.json (main/bin/scripts), configs por
+      convenção, regexes de teste/entrypoint compartilhadas.
+
+### 15 tools registradas (total: 39)
+
+find_todos, find_fixmes, find_cycles, find_dependencies, find_reverse_dependencies,
+find_unused_exports, find_unused_files, find_large_functions, find_large_classes,
+find_test_files, find_entrypoints, find_configurations, find_build_scripts,
+find_environment_variables, summarize_project_architecture.
+→ `test/intelligence.test.ts` (14 testes, fixture real: ciclo a→b→c→a, órfão, export
+morto, função de 60 linhas, env vars, manifests).
+
+### Decisões de escopo (Zero Ficção — por fase do mandato)
+
+1. **FASE 4 (internals/) BLOQUEADA por evidência:** verificado nesta máquina —
+   `tshark`, `tcpdump`, `ilspycmd`, `dumpbin`, `objdump`, `nm`, `7z` **ausentes**
+   (só `unzip` presente). Wrappers Sandbox sem binário real para testar = ficção.
+   Entra quando o ambiente tiver as ferramentas (ou como parser PE/ELF puro-JS,
+   fatia própria).
+2. **FASE 3 (research/) próxima fatia:** tools de rede exigem design de fetcher
+   injetável para testes determinísticos (precedente: OllamaProvider atrás do port).
+   Não começada aqui para não entregar metade sem testes.
+3. **FASE 5 (planning/) parcialmente coberta:** `impact_analysis`/`dependency_analysis`
+   do mandato = `find_reverse_dependencies`/`find_dependencies`/`find_cycles` desta
+   fatia. O restante (build_execution_plan, task_decomposition...) é papel do
+   **Planner LLM** (ADR-004), não de tool determinística — versões heurísticas
+   determinísticas seriam rasas o suficiente para violar "implementação real".
+4. **Tools da FASE 4.5 omitidas (com motivo):** find_callers/callees (call-graph =
+   semântico, exige TypeChecker); find_http_routes/middlewares/database_models/
+   event_handlers/message_consumers (nenhum framework no workspace p/ validar);
+   find_duplicate_code/similar_code (similaridade real = fatia própria);
+   find_architecture_violations/service_boundaries (exigem config de regras);
+   find_security/performance_hotspots (heurísticas rasas = ficção);
+   find_feature_flags (nenhum sistema de flags no workspace);
+   find_public/private_api ⊂ `exportedSymbols` (já exposto via unused_exports).
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **100 passed / 4 skipped** (12 suítes; +`intelligence` 14). ✅
+- `@clover/agent` → **13 passed**; `@clover/ast-index` → **4 passed**. ✅
+- `build:os` → **exit 0**. Registro: **39 tools**.
+
+---
+
 ## Backlog técnico (postergado, sem bloqueio)
 
 - **Fatia 9 — Sandbox nativo:** Tier 1 `isolated-vm`, Tier 2 WASM (limites finos de

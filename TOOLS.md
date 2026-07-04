@@ -43,8 +43,9 @@ Refs/pathspecs sanitizados por `assertSafeRef` (rejeita arg com `-` inicial — 
 | `git_checkout_branch` | `write` | `{ name, create?, cwd? }` | branch, created |
 | `git_revert` | `write` | `{ commit, cwd? }` | hash, message |
 | `git_restore` | `destructive` | `{ paths[], staged?, cwd? }` | restored (count) |
+| `git_clean` | `destructive` | `{ dryRun?, cwd? }` | removed[], dryRun |
 
-`git_restore` é o rollback automático do `Agent.runWithHeal`: chamado quando todas as tentativas de auto-cura falham, descartando alterações da working tree antes de retornar.
+`git_restore` + `git_clean` formam o **rollback total** do `Agent.runWithHeal`: na falha final da auto-cura, `git_restore -- .` reverte arquivos rastreados e `git_clean -fd` remove os untracked deixados pela tentativa (respeita `.gitignore`). **Atenção:** `git_clean` remove **TODOS** os untracked da working tree, não só os de uma tentativa específica — por isso `intent: destructive` e uso restrito ao caminho de falha final (nunca entre tentativas).
 
 ### Departamento FS (`@clover/tools`, namespace `fs/`) — leitura + escrita
 
@@ -55,7 +56,12 @@ Escritas exigem autorização do Governor (intent `write`).
 |------|---------------|-------|--------|
 | `read_file_paginated` | `{ path, offset?≥1, limit?≤2000 }` | lines[]{n,text}, totalReturned, offset, nextOffset, eof | read |
 | `write_file` | `{ path, content }` | path, bytes | write |
-| `patch_file` | `{ path, search, replace, all? }` | path, replacements | write |
+| `patch_file` | `{ path, search, replace, all? }` | path, replacements, **backup** | write |
+
+`write_file` cria diretórios pais recursivamente (`mkdir -p`). `patch_file` grava um
+backup `<path>.bak` do conteúdo **original** antes de sobrescrever — só *depois* de
+validar que o trecho existe (patch malsucedido não deixa `.bak` espúrio). O caminho do
+backup volta no campo `backup` da saída.
 
 ### Departamento Dev (`@clover/tools`, namespace `dev/`) — fundação de engenharia
 
@@ -66,6 +72,81 @@ Escritas exigem autorização do Governor (intent `write`).
 
 `run_build_and_test` detecta o engine pelo arquivo de lock (pnpm-lock.yaml → yarn.lock → package-lock.json → Cargo.toml → package.json). Em falha, `success=false` + `stderr` legível alimenta o loop de auto-cura (`Agent.runWithHeal`).
 `step`: `build` · `test` · `both` (default — build primeiro, para no primeiro erro).
+
+### Departamento AST (`@clover/tools`, namespace `ast/`) — análise estática sintática
+
+Camada de Language Server via **TypeScript Compiler API** (`ts.createSourceFile`).
+**Escopo honesto:** análise de **um arquivo**, puramente **sintática** — sem
+`Program`/`TypeChecker`/resolução de `tsconfig`. Logo, extrai o que está *escrito*
+(declarações, imports/exports, assinaturas-como-escritas), mas **não** resolve tipos
+nem referências cross-file (`find_references`/`find_type_definition` semânticos exigem
+o Workspace Index — FASE 2.5, planejado). Todas são `read` (declaram `fs.read`).
+
+| Tool | Entrada (Zod) | Saída |
+|------|---------------|-------|
+| `analyze_module` | `{ path }` | imports[], exports[], classes[], interfaces[], functions[], variables[], enums[], typeAliases[], decorators[] |
+| `query_ast_symbol` | `{ path, name }` | found, matches[]{name,kind,line,column,exported,signature} |
+| `find_inheritance` | `{ path, name? }` | entries[]{name,kind,extends[],implements[]} |
+| `find_documentation` | `{ path, name }` | found, docs[]{symbol,kind,line,doc} |
+
+Formas de `import` cobertas: default · named · namespace (`* as`) · side-effect.
+Formas de `export` cobertas: inline em declaração · `export {}` · `export {} from` ·
+`export * from` · `export default`. Extensões: `.ts/.tsx/.js/.jsx/.mts/.cts` — outra
+extensão retorna `{ success: false }` (degradação graciosa, nunca lança).
+
+### Workspace Index (`@clover/tools`, namespace `index/`) — FASE 2.5
+
+Índice **persistente e incremental** do workspace: símbolos + grafo de imports em
+SQLite (**sql.js**/WASM — zero dependência nativa, mesmo motivo do backend), gravado
+em `.clover/index.db` (gitignored via `*.db`). Extração de AST reusa o parser do
+`@clover/ast-index` (TS Compiler API). **Incremental por `mtime`+`size`**: um arquivo
+só é reparseado se mudou; deletados saem do índice. Skip: `.git`, `node_modules`,
+`dist`, `.clover`, `coverage`. Toda consulta tem `ORDER BY` (saída determinística).
+
+| Tool | Entrada (Zod) | Saída |
+|------|---------------|-------|
+| `workspace_index` | `{}` | dbPath, indexed, skipped, removed, files, symbols, imports |
+| `find_references` | `{ name }` | found, definitions[]{path,kind,line,exported,container}, importSites[]{path,module,names,line} |
+| `rename_symbol` | `{ name, newName }` | applied:`false`, wouldChange[]{path,line,site,kind}, note |
+
+**Exceção consciente ao invariante #6:** as tools têm `intent: read` mas gravam o
+*cache* `.clover/index.db` — não tocam código-fonte do usuário; leitura-com-cache não
+passa pelo Governor. **Escopo honesto:** `find_references` é baseado em **nome**
+(definições + sites de import pelo identificador), não em resolução semântica de
+binding. `rename_symbol` é **dry-run/preview** — lista o que mudaria e **não aplica
+nada**: rename seguro exige TypeChecker (aplicar por nome corromperia homônimos).
+Rotas HTTP/modelos ORM: adiado — nenhum framework HTTP/ORM no workspace atual para
+validar contra código real (regra Zero Ficção); entra quando houver alvo real.
+
+### Code Intelligence (`@clover/tools`, namespace `intelligence/`) — FASE 4.5
+
+Compreensão profunda do workspace **construída sobre o Workspace Index** (as tools
+consultam o índice SQLite, não reprocessam AST). Motor de grafo puro em
+`intelligence/graph.ts` (resolução de import relativo, ciclos via DFS canonicalizada,
+deps diretas/reversas); scanners de convenção/conteúdo em `intelligence/scan.ts`.
+Todas `read` + `fs.read`; mesma exceção de cache do `index/`.
+
+| Tool | Entrada (Zod) | Saída (essência) |
+|------|---------------|------------------|
+| `find_todos` / `find_fixmes` | `{ maxResults? }` | hits[]{file,line,text}, truncated |
+| `find_cycles` | `{ maxCycles? }` | cycles[][] (canonicalizados) |
+| `find_dependencies` | `{ path }` | internal[] (resolvidos), external[] (pacotes) |
+| `find_reverse_dependencies` | `{ path }` | dependents[] (análise de impacto) |
+| `find_unused_exports` | `{}` | unused[]{path,name,kind,line}, note |
+| `find_unused_files` | `{}` | unused[] (órfãos), note |
+| `find_large_functions` / `find_large_classes` | `{ minLines? }` | found[]{path,name,lines,...} (spans do índice) |
+| `find_test_files` | `{}` | files[] (convenção *.test/*.spec/__tests__) |
+| `find_entrypoints` | `{}` | fromManifests[] (main/bin) + conventional[] |
+| `find_configurations` | `{}` | files[] (tsconfig*, *.config.*, rc) |
+| `find_build_scripts` | `{}` | packages[]{package,manifest,scripts} |
+| `find_environment_variables` | `{}` | variables[]{name,file,line}, uniqueNames[] |
+| `summarize_project_architecture` | `{}` | stats, packages, topExternalModules, ciclos, testes — objeto tipado, não prosa |
+
+**Escopo honesto:** análise **sintática/name-based** sobre o índice — sem TypeChecker.
+`find_unused_exports`/`find_unused_files` documentam falsos positivos (barrels,
+`export *`, dynamic import) no campo `note`. Grafo cobre imports **relativos**;
+ciclos entre pacotes do monorepo via specifier de pacote não são detectados.
+`find_large_*` usa spans (`endLine`) persistidos no índice (schema v2).
 
 ## Roadmap de departamentos
 
@@ -79,14 +160,15 @@ São construídos como fatias verticais — uma de cada vez, real e testada.
 | 2 | Engineering (refactor/generate/compile/lint/format) | `dev/` | 🟡 search_code + run_build_and_test implementados |
 | 3 | Build (npm/pnpm/cargo/go/gradle/...) | `build/` | ⬜ planejado |
 | 4 | CI/CD (test/coverage/bench/docker/k8s) | `ci/` | ⬜ planejado |
-| 5 | AST (símbolos/refs/callers/tipos) | `ast/` | ⬜ planejado |
+| 5 | AST (símbolos/refs/callers/tipos) | `ast/` `index/` | 🟡 4 tools single-file + Workspace Index (workspace_index, find_references, rename_symbol preview) |
+| 5.5 | Code Intelligence (grafo/dead-code/métricas/convenções) | `intelligence/` | 🟡 15 tools index-backed (ciclos, deps/reversas, unused, large-*, todos/fixmes, env, entrypoints, summary) |
 | 6 | Documentation (docs/mermaid/api/readme) | `documentation/` | ⬜ planejado |
 | 7 | QA (mutation/property/snapshot/stress) | `qa/` | ⬜ planejado |
 | 8 | Performance (cpu/heap/hotspot/sql) | `performance/` | ⬜ planejado |
 | 9 | Security (secrets/audit/SAST/SBOM/CVE) | `security/` | ⬜ planejado (subconjunto defensivo primeiro) |
 | 10 | Database (pg/mysql/sqlite/redis/mongo) | `database/` | ⬜ planejado |
 | 11 | Network (nmap/tcpdump/dig/openssl) | `network/` | ⬜ planejado (wrappers locais autorizados) |
-| 12 | Reverse Eng (ghidra/radare2/frida/...) | `reversing/` | ⬜ planejado (wrappers locais autorizados) |
+| 12 | Reverse Eng / Internals (PE/ELF, .NET, PCAP, archives) | `reversing/` `internals/` | ⬜ **bloqueado por ambiente**: tshark/ilspycmd/dumpbin/objdump ausentes nesta máquina (verificado); wrappers sem binário real = ficção |
 | 13 | Windows (registry/services/wmi/etw/pe) | `windows/` | ⬜ planejado |
 | 14 | Linux (systemd/journal/perf/ebpf) | `linux/` | ⬜ planejado |
 | 15 | Browser (Playwright) | `browser/` | ⬜ planejado |
