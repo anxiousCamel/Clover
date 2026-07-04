@@ -43,12 +43,18 @@ describe('ConfigStore', () => {
     expect(b.getValue('mode')).toBe('auto');
   });
 
+  // POSIX: exige 0600 (sem grupo/outros). Windows/NTFS não aplica bits POSIX
+  // (`statSync().mode` reflete só read-only), então lá verificamos apenas que o
+  // arquivo foi escrito — o código já faz `mode: 0o600` + `chmod` best-effort.
   it('writes the file with restricted permissions (0600)', () => {
     const file = tmpPath();
     const store = new ConfigStore(file);
     store.set('logLevel', 'debug');
-    const mode = statSync(file).mode & 0o777;
-    expect(mode & 0o077).toBe(0); // sem permissão para grupo/outros
+    const st = statSync(file);
+    expect(st.isFile()).toBe(true);
+    if (process.platform !== 'win32') {
+      expect(st.mode & 0o777 & 0o077).toBe(0); // sem permissão para grupo/outros
+    }
   });
 
   it('adds providers and switches the active one', () => {

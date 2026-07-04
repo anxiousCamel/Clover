@@ -81,7 +81,7 @@ export class Planner {
         continue;
       }
 
-      const candidate = normalizePlan(parsed.value, goal);
+      const candidate = autoRepairPlan(normalizePlan(parsed.value, goal));
       const errors = validateCandidate(candidate, toolNames);
       if (errors.length === 0) return candidate;
       lastErrors = errors;
@@ -117,6 +117,25 @@ export function tryParseJson(raw: string): ParseResult {
   } catch (err) {
     return { ok: false, error: `JSON inválido: ${err instanceof Error ? err.message : String(err)}` };
   }
+}
+
+/**
+ * Repara o plano antes da validação: corrige outputs que referenciam nós
+ * inexistentes (limitação do constrained decoding — o modelo não sabe quais IDs
+ * vai gerar quando preenche outputs). Aponta para o último nó da lista como
+ * heurística — no DAG linear gerado por modelos pequenos, o último nó é o
+ * resultado final.
+ */
+export function autoRepairPlan(plan: PlanIR): PlanIR {
+  const ids = new Set(plan.nodes.map((n) => n.id));
+  if (ids.size === 0) return plan;
+  const lastId = plan.nodes[plan.nodes.length - 1].id;
+
+  const repairedOutputs = plan.outputs.length > 0
+    ? plan.outputs.map((out) => ids.has(out.nodeId) ? out : { ...out, nodeId: lastId })
+    : [{ kind: 'ref' as const, nodeId: lastId, path: 'message' }];
+
+  return { ...plan, outputs: repairedOutputs };
 }
 
 /** Coage o objeto bruto em um PlanIR (campos faltantes viram defaults). */

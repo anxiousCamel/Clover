@@ -7,6 +7,8 @@
  * runtime Node oferece de forma confiável.
  */
 
+import type { ToolIntent } from '@clover/contracts';
+
 export class TimeoutError extends Error {
   constructor(ms: number, label: string) {
     super(`${label} excedeu o timeout de ${ms}ms`);
@@ -130,5 +132,124 @@ export class ResourceManager {
 
   get queued(): number {
     return this.sem.queued;
+  }
+}
+
+// ===========================================================================
+// Execution Governor — trava de autorização + auditoria (RAP §11.6, segurança)
+// ===========================================================================
+
+/** Contexto de uma decisão de autorização de tool. */
+export interface AuthContext {
+  tool: string;
+  intent: ToolIntent;
+  taskId: string;
+  traceId: string;
+  args: Record<string, unknown>;
+}
+
+/** Decisão de autorização. */
+export interface AuthDecision {
+  allowed: boolean;
+  reason?: string;
+}
+
+/** Prompt de aprovação interativo (modo step). Retorna true = autorizado. */
+export type ApprovalPrompt = (ctx: AuthContext) => Promise<boolean> | boolean;
+
+/** Entrada do log de auditoria (toda decisão sobre write/destructive). */
+export interface AuditEntry {
+  ts: number;
+  tool: string;
+  intent: ToolIntent;
+  taskId: string;
+  traceId: string;
+  mode: GovernorMode;
+  decision: 'allowed' | 'denied';
+  reason?: string;
+}
+
+/** Sink de auditoria (ex.: Event Bus, Blackboard, arquivo). */
+export type AuditSink = (entry: AuditEntry) => void;
+
+export type GovernorMode = 'step' | 'auto';
+
+export interface ExecutionGovernorOptions {
+  /** `step` = pede aprovação; `auto` = registra e permite. Default: `step`. */
+  mode?: GovernorMode;
+  /** Prompt de aprovação (obrigatório em `step` para autorizar writes). */
+  prompt?: ApprovalPrompt;
+  /** Sink de auditoria. Default: no-op. */
+  audit?: AuditSink;
+  /**
+   * Timeout por execução de tool (ms). Aplicado via `withTimeout` — NÃO reentra
+   * no semáforo do RM (a concorrência já é governada no nível da task, no Agent;
+   * reentrar aqui causaria deadlock por aquisição aninhada no mesmo pool).
+   */
+  perToolTimeoutMs?: number;
+  /** Relógio (testes). */
+  now?: () => number;
+}
+
+/**
+ * Governor: a **trava** que o Kernel injeta no Executor. Duas responsabilidades:
+ *
+ *  1. `authorize(ctx)` — tools `read` passam direto; `write`/`destructive` exigem
+ *     autorização. Em `step`, pede aprovação (nega se não houver `prompt`, ou se
+ *     o usuário reprovar — **fail-safe**). Em `auto`, registra na auditoria e
+ *     permite. TODA decisão sobre write/destructive é auditada.
+ *  2. `guard(fn)` — envelopa a execução da tool com **timeout** do RM (a
+ *     concorrência já é governada no nível da task, no Agent — não reentrar no
+ *     semáforo aqui, sob risco de deadlock).
+ *
+ * `intent` é sinal de aprovação/auditoria, NÃO de contenção — a contenção
+ * continua sendo o capability-token + fronteira de workspace.
+ */
+export class ExecutionGovernor {
+  private readonly mode: GovernorMode;
+  private readonly prompt?: ApprovalPrompt;
+  private readonly audit: AuditSink;
+  private readonly perToolTimeoutMs?: number;
+  private readonly now: () => number;
+
+  constructor(opts: ExecutionGovernorOptions = {}) {
+    this.mode = opts.mode ?? 'step';
+    this.prompt = opts.prompt;
+    this.audit = opts.audit ?? (() => {});
+    this.perToolTimeoutMs = opts.perToolTimeoutMs;
+    this.now = opts.now ?? Date.now;
+  }
+
+  async authorize(ctx: AuthContext): Promise<AuthDecision> {
+    if (ctx.intent === 'read') return { allowed: true };
+
+    let decision: AuthDecision;
+    if (this.mode === 'auto') {
+      decision = { allowed: true };
+    } else if (!this.prompt) {
+      // Fail-safe: modo step sem aprovador não pode autorizar mutação.
+      decision = { allowed: false, reason: 'sem aprovador configurado (modo step)' };
+    } else {
+      const ok = await this.prompt(ctx);
+      decision = ok ? { allowed: true } : { allowed: false, reason: 'reprovado pelo usuário' };
+    }
+
+    this.audit({
+      ts: this.now(),
+      tool: ctx.tool,
+      intent: ctx.intent,
+      taskId: ctx.taskId,
+      traceId: ctx.traceId,
+      mode: this.mode,
+      decision: decision.allowed ? 'allowed' : 'denied',
+      reason: decision.reason,
+    });
+    return decision;
+  }
+
+  /** Envelopa a execução da tool com timeout (sem reentrar no semáforo). */
+  guard<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.perToolTimeoutMs) return withTimeout(fn(), this.perToolTimeoutMs, 'tool');
+    return fn();
   }
 }

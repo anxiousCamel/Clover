@@ -42,5 +42,27 @@ export const concatTool: LocalTool = defineTool(
   (args) => ({ success: true, output: { text: `${String(args.a ?? '')}${String(args.b ?? '')}` } }),
 );
 
-/** Conjunto de tools demo. */
-export const demoTools: LocalTool[] = [echoTool, concatTool];
+/**
+ * respond: envia uma resposta em linguagem natural ao usuário.
+ * Ferramenta de base que permite ao Planner responder perguntas conversacionais
+ * e tarefas que não exigem execução de código ou acesso a arquivos.
+ */
+export const respondTool: LocalTool = defineTool(
+  {
+    name: 'respond',
+    description: 'Envia uma resposta em linguagem natural ao usuário. Use para responder perguntas, explicações, conversas ou qualquer tarefa que não exija ferramentas externas.',
+    inputSchema: {
+      type: 'object',
+      properties: { message: { type: 'string', description: 'Texto da resposta ao usuário.' } },
+      required: ['message'],
+      additionalProperties: false,
+    },
+    outputSchema: { type: 'object', properties: { message: { type: 'string' } } },
+    capabilities: [],
+    pure: true,
+  },
+  (args) => ({ success: true, output: { message: String(args.message ?? '') } }),
+);
+
+/** Conjunto de tools base do CloverOS REPL. */
+export const demoTools: LocalTool[] = [respondTool, echoTool, concatTool];

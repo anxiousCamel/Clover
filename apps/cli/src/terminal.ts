@@ -115,6 +115,9 @@ export async function promptSecret(question: string, theme: ThemeManager): Promi
  * Spinner de linha única (anti-freeze) com rótulo dinâmico de "raciocínio vivo".
  * `label()` é reavaliado a cada frame (pode refletir fase atual + atores ativos).
  */
+/** Spinner ativo (para pausar durante prompts de aprovação mid-task). */
+let activeSpinner: { pause(): void; resume(): void } | null = null;
+
 export async function withSpinner<T>(
   label: () => string,
   theme: ThemeManager,
@@ -123,13 +126,41 @@ export async function withSpinner<T>(
   if (!stdout.isTTY) return task();
   const frames = theme.symbols.spinner;
   let i = 0;
-  const timer = setInterval(() => {
-    stdout.write(`\r${theme.accent(frames[i++ % frames.length])} ${label()}\x1b[K`);
-  }, 90);
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const pause = (): void => {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    stdout.write('\r\x1b[K'); // limpa a linha do spinner
+  };
+  const resume = (): void => {
+    if (timer) return;
+    timer = setInterval(() => {
+      stdout.write(`\r${theme.accent(frames[i++ % frames.length])} ${label()}\x1b[K`);
+    }, 90);
+  };
+  resume();
+  const prev = activeSpinner;
+  activeSpinner = { pause, resume };
   try {
     return await task();
   } finally {
-    clearInterval(timer);
-    stdout.write('\r\x1b[K'); // limpa a linha do spinner
+    pause();
+    activeSpinner = prev;
+  }
+}
+
+/**
+ * Executa `fn` com o spinner ativo (se houver) pausado — para que um prompt
+ * de aprovação mid-task não brigue com a linha do spinner. Restaura ao fim.
+ */
+export async function withSpinnerSuspended<T>(fn: () => Promise<T>): Promise<T> {
+  const s = activeSpinner;
+  s?.pause();
+  try {
+    return await fn();
+  } finally {
+    s?.resume();
   }
 }

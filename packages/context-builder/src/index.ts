@@ -91,8 +91,11 @@ export class ContextBuilder {
     // 3) tools relevantes
     let candidateTools = req.tools ?? [];
     const k = req.maxTools ?? 5;
-    if (req.toolSearch) candidateTools = req.toolSearch.find(req.query, k, req.tools);
-    else candidateTools = candidateTools.slice(0, k);
+    if (req.toolSearch) {
+      const found = req.toolSearch.find(req.query, k, req.tools);
+      // Fallback: se nenhuma tool bate na busca lexical, usa todas (modelo decide).
+      candidateTools = found.length > 0 ? found : (req.tools ?? []).slice(0, k);
+    } else candidateTools = candidateTools.slice(0, k);
 
     const tools: ToolDescriptor[] = [];
     for (const t of candidateTools) {

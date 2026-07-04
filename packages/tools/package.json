@@ -1,8 +1,9 @@
 {
-  "name": "@clover/agent",
+  "name": "@clover/tools",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "Arsenal de ferramentas do CloverOS — namespaces por departamento (git/, sys/, ...). Toda tool: Zod in/out, capability declarada, exec via Sandbox Tier 3.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -17,17 +18,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clover/context-builder": "workspace:*",
     "@clover/contracts": "workspace:*",
-    "@clover/kernel": "workspace:*",
-    "@clover/knowledge-retriever": "workspace:*",
-    "@clover/planner": "workspace:*",
-    "@clover/resource-manager": "workspace:*",
-    "@clover/scheduler": "workspace:*",
-    "@clover/tool-search": "workspace:*",
-    "@clover/tools": "workspace:*"
+    "@clover/sandbox": "workspace:*",
+    "@clover/tool-abi": "workspace:*",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.9"
   }

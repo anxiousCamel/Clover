@@ -15,8 +15,19 @@ import { randomUUID } from 'node:crypto';
 import type { PlanIR, RunResult, ToolDescriptor } from '@clover/contracts';
 import { EventBus } from '@clover/event-bus';
 import { CapabilityResolver } from '@clover/capability';
-import { ExecutionEngine, type ResumeState } from '@clover/executor';
+import { ExecutionEngine, type ExecutionEngineOptions, type ResumeState } from '@clover/executor';
 import { LocalToolBridge, ToolRegistry, type LocalTool, type ToolBridge } from '@clover/tool-abi';
+
+/**
+ * Hooks de governança injetados no Executor. Ficam vazios em uso como
+ * biblioteca; o **CLI sempre os injeta** (via `ExecutionGovernor`) — invariante:
+ * o produto nunca roda tools de escrita sem trava. Sem `authorize`, o Executor
+ * é fail-safe (nega write/destructive).
+ */
+export interface KernelOptions {
+  authorize?: ExecutionEngineOptions['authorize'];
+  guard?: ExecutionEngineOptions['guard'];
+}
 
 export interface SubmitPlanOptions {
   workspacePath?: string;
@@ -39,13 +50,15 @@ export class Kernel {
   private readonly engine: ExecutionEngine;
   private booted = false;
 
-  constructor() {
+  constructor(opts: KernelOptions = {}) {
     this.events = new EventBus();
     this.registry = new ToolRegistry();
     this.bridge = new LocalToolBridge(this.registry);
     this.capabilities = new CapabilityResolver();
     this.engine = new ExecutionEngine(this.bridge, this.events, {
       verifyToken: (t) => this.capabilities.verify(t),
+      authorize: opts.authorize,
+      guard: opts.guard,
     });
   }
 
@@ -114,9 +127,9 @@ export class Kernel {
   }
 }
 
-/** Factory: kernel com tools pré-registradas. */
-export function createKernel(tools: LocalTool[] = []): Kernel {
-  return new Kernel().registerTools(tools).boot();
+/** Factory: kernel com tools pré-registradas e hooks de governança opcionais. */
+export function createKernel(tools: LocalTool[] = [], opts: KernelOptions = {}): Kernel {
+  return new Kernel(opts).registerTools(tools).boot();
 }
 
 export { CapabilityResolver } from '@clover/capability';

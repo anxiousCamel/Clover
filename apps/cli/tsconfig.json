@@ -33,6 +33,7 @@
     { "path": "../../packages/resource-manager" },
     { "path": "../../packages/sandbox" },
     { "path": "../../packages/tool-search" },
+    { "path": "../../packages/tools" },
     { "path": "../../packages/ast-index" },
     { "path": "../../packages/knowledge-graph" },
     { "path": "../../packages/knowledge-retriever" }

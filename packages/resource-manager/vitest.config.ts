@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@clover/resource-manager': p('./src/index.ts'),
+      '@clover/contracts': p('../contracts/src/index.ts'),
     },
   },
   test: {

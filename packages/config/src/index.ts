@@ -72,7 +72,7 @@ export class ConfigStore {
   private read(): CloverConfig {
     try {
       if (existsSync(this.filePath)) {
-        return merge(JSON.parse(readFileSync(this.filePath, 'utf8')) as Partial<CloverConfig>);
+        return merge(JSON.parse(readFileSync(this.filePath, 'utf8').replace(/^﻿/, '')) as Partial<CloverConfig>);
       }
     } catch {
       /* config corrompida → usa defaults */

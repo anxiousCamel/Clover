@@ -12,19 +12,14 @@
     "declarationMap": true,
     "sourceMap": true,
     "composite": true,
+    "types": ["node"],
     "outDir": "dist",
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../contracts" },
-    { "path": "../kernel" },
-    { "path": "../scheduler" },
-    { "path": "../planner" },
-    { "path": "../context-builder" },
-    { "path": "../resource-manager" },
-    { "path": "../tool-search" },
-    { "path": "../knowledge-retriever" },
-    { "path": "../tools" }
+    { "path": "../tool-abi" },
+    { "path": "../sandbox" }
   ]
 }

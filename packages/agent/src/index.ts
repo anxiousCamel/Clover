@@ -17,6 +17,18 @@
  */
 
 import type { Goal, RunResult } from '@clover/contracts';
+import { gitRestoreTool } from '@clover/tools';
+
+export interface HealOptions {
+  /** Máximo de tentativas totais (1 original + N re-planejamentos). Default: 2. */
+  maxAttempts?: number;
+  /**
+   * Chamada se todas as tentativas falharem. Recebe o caminho do workspace.
+   * Padrão: executa `git restore -- .` para descartar mudanças na working tree.
+   * Injete um callback para testes ou comportamentos alternativos.
+   */
+  onFinalFailure?: (workspacePath: string) => Promise<void> | void;
+}
 import {
   ContextBuilder,
   type BuiltContext,
@@ -56,6 +68,54 @@ export interface AgentRunResult {
   result: RunResult;
 }
 
+/**
+ * Rollback padrão: descarta todas as alterações na working tree via `git restore`.
+ * Falhas silenciosas (repo sem git, tree limpa, etc.) não propagam — o rollback
+ * é best-effort; o sinal de falha de build já está no resultado devolvido ao caller.
+ */
+async function defaultRollback(workspacePath: string, taskId: string): Promise<void> {
+  await gitRestoreTool.handler(
+    { paths: ['.'] },
+    {
+      taskId,
+      traceId: 'auto-rollback',
+      workspacePath,
+      token: {
+        id: `rollback-${taskId}`,
+        taskId,
+        caps: [{ kind: 'proc.exec', argv0Allow: ['git'], maxProcs: 1 }],
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 30_000,
+        sig: 'auto-rollback',
+      },
+      emit: () => {},
+    },
+  );
+}
+
+/**
+ * Extrai a mensagem de erro de um resultado de `run_build_and_test` com falha.
+ * Retorna null se não houver output de build ou se o build passou.
+ */
+function extractBuildFailure(result: RunResult): string | null {
+  for (const out of result.outputs) {
+    if (
+      typeof out === 'object' &&
+      out !== null &&
+      'success' in out &&
+      (out as { success: unknown }).success === false &&
+      'stderr' in out &&
+      typeof (out as { stderr: unknown }).stderr === 'string' &&
+      ((out as { stderr: string }).stderr.length > 0 ||
+        ('failedCommand' in out && (out as { failedCommand: unknown }).failedCommand !== null))
+    ) {
+      const o = out as { stderr: string; failedCommand?: string | null };
+      return o.stderr || `comando falhou: ${o.failedCommand ?? 'desconhecido'}`;
+    }
+  }
+  return null;
+}
+
 export class Agent {
   constructor(private readonly deps: AgentDeps) {}
 
@@ -92,5 +152,44 @@ export class Agent {
     );
 
     return { goal, context, taskId: submitted.taskId, result: submitted.result };
+  }
+
+  /**
+   * Executa `run()` com um laço de auto-cura: se o resultado contiver um output
+   * de `run_build_and_test` com falha, re-planeja injetando o stderr como contexto.
+   * Máximo de `maxAttempts` tentativas totais (default: 2 — 1 original + 1 cura).
+   */
+  async runWithHeal(goal: Goal, opts: HealOptions = {}): Promise<AgentRunResult> {
+    const maxAttempts = Math.max(1, opts.maxAttempts ?? 2);
+    let currentGoal = goal;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const run = await this.run(currentGoal);
+      const failure = extractBuildFailure(run.result);
+
+      if (!failure) return run; // Sucesso — sem rollback necessário.
+
+      if (attempt === maxAttempts - 1) {
+        // Última tentativa: aciona rollback automático antes de retornar.
+        if (opts.onFinalFailure) {
+          await opts.onFinalFailure(goal.workspacePath);
+        } else {
+          await defaultRollback(goal.workspacePath, run.taskId);
+        }
+        return run;
+      }
+
+      // Injeta o erro de build no objetivo para o próximo planejamento.
+      currentGoal = {
+        ...goal,
+        text:
+          `${goal.text}\n\n` +
+          `[Auto-cura — tentativa ${attempt + 1}/${maxAttempts - 1} falhou. ` +
+          `Corrija o erro antes de finalizar]\n` +
+          `Erro de build/test:\n${failure}`,
+      };
+    }
+    // Não deve chegar aqui (o loop sempre retorna dentro).
+    return this.run(currentGoal);
   }
 }

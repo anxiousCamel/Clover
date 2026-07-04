@@ -16,10 +16,17 @@ import { ContextBuilder } from '@clover/context-builder';
 import type { CapabilityToken, Goal } from '@clover/contracts';
 import { createI18n, LANGUAGES, type Lang } from '@clover/i18n';
 import { createKernel, demoTools } from '@clover/kernel';
+import { cloverTools } from '@clover/tools';
 import type { LlmProvider, StructuredRequest } from '@clover/llm';
 import { OllamaProvider, OpenAiCompatibleAdapter } from '@clover/llm';
 import { Planner } from '@clover/planner';
-import { ResourceManager } from '@clover/resource-manager';
+import {
+  ExecutionGovernor,
+  ResourceManager,
+  type ApprovalPrompt,
+  type AuditSink,
+  type AuthContext,
+} from '@clover/resource-manager';
 import { ProcessSandbox } from '@clover/sandbox';
 import { DurableScheduler } from '@clover/scheduler';
 import { EventStore } from '@clover/state';
@@ -29,7 +36,7 @@ import { ChoicePrompt, StatusBoard, UsageCounter, createTheme, phaseLabel } from
 import { ModelRegistry, ReplEngine, buildExecConfirmation } from './repl-engine.js';
 import { installResilience } from './resilience.js';
 import { renderSteps, runSetup, type SetupProbes } from './setup.js';
-import { clearScreen, createLineReader, promptChoice, promptSecret, render, withSpinner } from './terminal.js';
+import { clearScreen, createLineReader, promptChoice, promptSecret, render, withSpinner, withSpinnerSuspended } from './terminal.js';
 
 /** Localiza a raiz do monorepo subindo até achar pnpm-workspace.yaml. */
 function findRepoRoot(start: string): string {
@@ -62,9 +69,10 @@ function loadModels(): string[] {
 // --- setup probes reais -----------------------------------------------------
 
 function buildRealProbes(): SetupProbes {
+  const WIN = process.platform === 'win32';
   const ok = (cmd: string, args: string[]): boolean => {
     try {
-      return spawnSync(cmd, args, { stdio: 'ignore' }).status === 0;
+      return spawnSync(cmd, args, { stdio: 'ignore', shell: WIN }).status === 0;
     } catch {
       return false;
     }
@@ -75,12 +83,13 @@ function buildRealProbes(): SetupProbes {
     nodeModulesExists: () => existsSync(join(ROOT, 'node_modules')),
     buildExists: () => existsSync(join(ROOT, 'packages', 'kernel', 'dist', 'index.js')),
     installDeps: async () => {
-      spawnSync('pnpm', ['install'], { cwd: ROOT, stdio: 'inherit' });
+      spawnSync('pnpm', ['install'], { cwd: ROOT, stdio: 'inherit', shell: WIN });
     },
     buildTs: async () => {
       spawnSync('pnpm', ['exec', 'tsc', '--build', 'apps/cli/tsconfig.json'], {
         cwd: ROOT,
         stdio: 'inherit',
+        shell: WIN,
       });
     },
     ollamaRunning: async () => {
@@ -163,7 +172,36 @@ async function cmdRepl(): Promise<void> {
   // Resiliência: nada de stack trace cru; persiste no Blackboard e sai limpo.
   installResilience({ blackboard, theme, render, exit: (c) => process.exit(c) });
 
-  const kernel = createKernel(demoTools);
+  const reader = createLineReader();
+
+  // Governor: a trava de autorização/auditoria que o Kernel injeta no Executor.
+  // Invariante: o CLI SEMPRE injeta o Governor — tools write/destructive nunca
+  // rodam sem trava (o Executor é fail-safe sem ele). O modo é lido AO VIVO da
+  // config (o usuário troca via /mode ou /config sem reconstruir o kernel).
+  const auditSink: AuditSink = (e) => {
+    blackboard.post({ topic: 'audit', author: 'governor', payload: e });
+    const tag = e.decision === 'allowed' ? theme.dim : theme.warn;
+    render(tag(`[audit] ${e.tool} (${e.intent}) → ${e.decision}${e.reason ? ` — ${e.reason}` : ''}`));
+  };
+  const approvalPrompt: ApprovalPrompt = (ctx: AuthContext) =>
+    withSpinnerSuspended(async () => {
+      const ans = (await reader.question(theme.warn(`Autorizar ${ctx.tool} (${ctx.intent})? (s/N) `)))
+        .trim()
+        .toLowerCase();
+      return ans === 's' || ans === 'sim' || ans === 'y' || ans === 'yes';
+    });
+  const stepGovernor = new ExecutionGovernor({ mode: 'step', prompt: approvalPrompt, audit: auditSink, perToolTimeoutMs: 60_000 });
+  const autoGovernor = new ExecutionGovernor({ mode: 'auto', audit: auditSink, perToolTimeoutMs: 60_000 });
+  const activeGovernor = (): ExecutionGovernor =>
+    config.getValue('mode') === 'auto' ? autoGovernor : stepGovernor;
+
+  // Arsenal: tools base (echo/concat/respond) + departamentos (@clover/tools).
+  // Registrar no Kernel já as torna visíveis ao Planner e ao Context Builder
+  // (Agent → kernel.listTools() → ToolSearch → ContextBuilder → Planner).
+  const kernel = createKernel([...demoTools, ...cloverTools], {
+    authorize: (req) => activeGovernor().authorize({ ...req }),
+    guard: (fn) => activeGovernor().guard(fn),
+  });
   const scheduler = new DurableScheduler(kernel, new EventStore({ filePath: join(ROOT, '.clover', 'journal.jsonl') }));
   const models = new ModelRegistry(loadModels(), config.getValue('defaultModel'));
   const usage = new UsageCounter();
@@ -211,7 +249,6 @@ async function cmdRepl(): Promise<void> {
   });
 
   const sandbox = new ProcessSandbox();
-  const reader = createLineReader();
   let alwaysExec = false;
 
   clearScreen();
@@ -300,17 +337,40 @@ async function cmdRepl(): Promise<void> {
       render(theme.warn(i18n.t('exec.usage')));
       return;
     }
-    // Modo auto: confia nas barreiras programáticas (sem confirmação manual).
+    const [argv0, ...args] = command.split(/\s+/);
+    // /exec é uma porta SEPARADA ao Sandbox (comando explícito do usuário).
+    // Mantém sua UX dedicada (cancel/once/always) mas compartilha a AUDITORIA do
+    // Governor — nenhuma escrita fica sem trilha. Modo auto: sem confirmação.
     const auto = config.getValue('mode') === 'auto';
     if (!auto && !alwaysExec) {
       const choice = await promptChoice(buildExecConfirmation(command, i18n), theme);
-      if (choice.cancelled || choice.value === 'cancel') {
+      const denied = choice.cancelled || choice.value === 'cancel';
+      auditSink({
+        ts: Date.now(),
+        tool: argv0,
+        intent: 'destructive',
+        taskId: 'cli-exec',
+        traceId: 'cli-exec',
+        mode: 'step',
+        decision: denied ? 'denied' : 'allowed',
+      });
+      if (denied) {
         render(theme.dim(i18n.t('exec.cancelled')));
         return;
       }
       if (choice.value === 'always') alwaysExec = true;
+    } else {
+      auditSink({
+        ts: Date.now(),
+        tool: argv0,
+        intent: 'destructive',
+        taskId: 'cli-exec',
+        traceId: 'cli-exec',
+        mode: auto ? 'auto' : 'step',
+        decision: 'allowed',
+        reason: alwaysExec ? 'always (sessão)' : undefined,
+      });
     }
-    const [argv0, ...args] = command.split(/\s+/);
     const token: CapabilityToken = {
       id: 'cli-exec',
       taskId: 'cli-exec',

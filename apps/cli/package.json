@@ -31,6 +31,7 @@
     "@clover/scheduler": "workspace:*",
     "@clover/state": "workspace:*",
     "@clover/tool-search": "workspace:*",
+    "@clover/tools": "workspace:*",
     "@clover/tui": "workspace:*"
   },
   "devDependencies": {

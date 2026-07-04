@@ -18,7 +18,9 @@ import type {
   IRValue,
   PlanIR,
   RunResult,
+  ToolIntent,
   ToolInvocation,
+  ToolResult,
 } from '@clover/contracts';
 import { isIRRef } from '@clover/contracts';
 import { EventBus } from '@clover/event-bus';
@@ -53,6 +55,15 @@ class NodeFault extends Error {
   }
 }
 
+/** Pedido de autorização de uma execução de tool (write/destructive). */
+export interface AuthorizeRequest {
+  tool: string;
+  intent: ToolIntent;
+  args: Record<string, unknown>;
+  taskId: string;
+  traceId: string;
+}
+
 export interface ExecutionEngineOptions {
   /**
    * Verificador opcional do CapabilityToken (assinatura/expiração). Se fornecido
@@ -61,6 +72,18 @@ export interface ExecutionEngineOptions {
    * processo. Default: sem verificação (compatível com o skeleton).
    */
   verifyToken?: (token: CapabilityToken) => boolean;
+  /**
+   * Autorizador (Governor) para tools `write`/`destructive`. **Fail-safe**: se
+   * uma tool não-`read` for chamada e este hook estiver AUSENTE, a execução é
+   * negada com `authorization_denied`. Injetado pelo Kernel a partir do RM.
+   * Tools `read` nunca chamam este hook.
+   */
+  authorize?: (req: AuthorizeRequest) => Promise<{ allowed: boolean; reason?: string }>;
+  /**
+   * Envelope opcional da execução de cada tool (ex.: timeout do RM). NÃO deve
+   * reentrar no semáforo de concorrência (governado no nível da task).
+   */
+  guard?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
 export class ExecutionEngine {
@@ -206,6 +229,32 @@ export class ExecutionEngine {
       throw new NodeFault({ code: 'tool_not_found', nodeId, message: `tool não encontrada: ${tool}` });
     }
 
+    // Trava de autorização: tools write/destructive exigem o Governor (fail-safe).
+    const intent: ToolIntent = this.bridge.describe(tool)?.intent ?? 'read';
+    if (intent !== 'read') {
+      if (!this.opts.authorize) {
+        throw new NodeFault({
+          code: 'authorization_denied',
+          nodeId,
+          message: `tool '${tool}' (${intent}) requer autorização, mas nenhum Governor foi configurado`,
+        });
+      }
+      const decision = await this.opts.authorize({
+        tool,
+        intent,
+        args,
+        taskId: ctx.taskId,
+        traceId: ctx.traceId,
+      });
+      if (!decision.allowed) {
+        throw new NodeFault({
+          code: 'authorization_denied',
+          nodeId,
+          message: decision.reason ?? `autorização negada para '${tool}'`,
+        });
+      }
+    }
+
     const invocation: ToolInvocation = {
       taskId: ctx.taskId,
       traceId: ctx.traceId,
@@ -215,7 +264,8 @@ export class ExecutionEngine {
         this.bus.publish({ topic, traceId: ctx.traceId, spanId: nodeId, source: tool, payload }),
     };
 
-    const result = await this.bridge.invoke(tool, args, invocation);
+    const invokeTool = (): Promise<ToolResult> => this.bridge.invoke(tool, args, invocation);
+    const result = this.opts.guard ? await this.opts.guard(invokeTool) : await invokeTool();
     if (!result.success) {
       throw new NodeFault({
         code: 'tool_error',

@@ -26,6 +26,8 @@ export default defineConfig({
       '@clover/knowledge-graph': p('../knowledge-graph/src/index.ts'),
       '@clover/knowledge-retriever': p('../knowledge-retriever/src/index.ts'),
       '@clover/agent': p('./src/index.ts'),
+      '@clover/sandbox': p('../sandbox/src/index.ts'),
+      '@clover/tools': p('../tools/src/index.ts'),
     },
   },
   test: {

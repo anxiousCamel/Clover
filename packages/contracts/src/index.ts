@@ -133,6 +133,15 @@ export function isIRRef(v: unknown): v is IRRef {
 /** JSON Schema (forma frouxa; refinada por adapters concretos). */
 export type JsonSchema = Record<string, unknown>;
 
+/**
+ * Intenção de efeito de uma tool — sinal de **aprovação/auditoria**, não de
+ * contenção (a contenção é o capability-token + fronteira de workspace). O
+ * Governor exige autorização do Resource Manager para `write`/`destructive`.
+ * Uma tool `write` DEVE também declarar a capability correspondente (ex.:
+ * `fs.write`) — `intent` e capability andam juntos.
+ */
+export type ToolIntent = 'read' | 'write' | 'destructive';
+
 /** Descritor uniforme de uma ferramenta — local, MCP, WASM ou remota. */
 export interface ToolDescriptor {
   name: string;
@@ -143,6 +152,8 @@ export interface ToolDescriptor {
   capabilities: CapabilityRequest[];
   /** Idempotente/sem efeitos colaterais → cacheável. */
   pure?: boolean;
+  /** Intenção de efeito (default `read`). `write`/`destructive` exigem autorização. */
+  intent?: ToolIntent;
   origin: 'local' | 'mcp' | 'wasm' | 'remote';
 }
 
@@ -229,6 +240,7 @@ export interface ExecutionFault {
   code:
     | 'validation'
     | 'capability_denied'
+    | 'authorization_denied'
     | 'tool_not_found'
     | 'tool_error'
     | 'ref_unresolved'
