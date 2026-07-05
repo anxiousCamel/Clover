@@ -16,7 +16,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import initSqlJs, { type Database } from 'sql.js';
+import type { Database } from 'sql.js';
+
+import { loadSql } from '../shared/sqljs.js';
 
 export interface FileMeta {
   path: string;
@@ -49,13 +51,6 @@ export interface IndexStats {
   files: number;
   symbols: number;
   imports: number;
-}
-
-/** Init do sql.js é caro (carrega WASM) — feito uma vez, reusado por todas as stores. */
-let sqlModulePromise: ReturnType<typeof initSqlJs> | null = null;
-function loadSql(): ReturnType<typeof initSqlJs> {
-  if (!sqlModulePromise) sqlModulePromise = initSqlJs();
-  return sqlModulePromise;
 }
 
 /**

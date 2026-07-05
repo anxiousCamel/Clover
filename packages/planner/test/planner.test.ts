@@ -43,7 +43,7 @@ describe('planner: constrained generation (LLM -> IR)', () => {
   it('buildPlanSchema constrains the tool field to available tool names', () => {
     const schema = buildPlanSchema(tools) as Record<string, any>;
     const toolEnum = schema.properties.nodes.items.properties.tool.enum;
-    expect(new Set(toolEnum)).toEqual(new Set(['echo', 'concat']));
+    expect(new Set(toolEnum)).toEqual(new Set(['echo', 'concat', 'respond']));
     expect(schema.properties.version.const).toBe('1');
   });
 

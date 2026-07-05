@@ -64,6 +64,13 @@ export function detectCaps(
   return { color, unicode };
 }
 
+/**
+ * BLINDAGEM (SRE): todos os formatadores são arrow-properties **bound à
+ * instância** — podem ser destacados (`const f = theme.warn`) e passados como
+ * callback sem perder o `this` (bug real: "Cannot read properties of undefined
+ * (reading 'paint')"). Entrada também é nil-safe: `undefined`/objeto vira
+ * string ao invés de explodir no template.
+ */
 export class ThemeManager {
   readonly symbols: SymbolSet;
 
@@ -71,43 +78,28 @@ export class ThemeManager {
     this.symbols = caps.unicode ? UNICODE_SYMBOLS : ASCII_SYMBOLS;
   }
 
-  private paint(code: string, s: string): string {
-    return this.caps.color ? `${code}${s}${ANSI.reset}` : s;
+  private paint(code: string, s: unknown): string {
+    const text = typeof s === 'string' ? s : s == null ? '' : String(s);
+    return this.caps.color ? `${code}${text}${ANSI.reset}` : text;
   }
 
-  success(s: string): string {
-    return this.paint(ANSI.brightGreen, s);
-  }
-  error(s: string): string {
-    return this.paint(ANSI.red, s);
-  }
-  warn(s: string): string {
-    return this.paint(ANSI.yellow, s);
-  }
-  info(s: string): string {
-    return this.paint(ANSI.cyan, s);
-  }
-  dim(s: string): string {
-    return this.paint(ANSI.dim, s);
-  }
-  accent(s: string): string {
-    return this.paint(ANSI.green, s);
-  }
-  heading(s: string): string {
-    return this.paint(`${ANSI.bold}${ANSI.brightGreen}`, s);
-  }
+  success = (s: unknown): string => this.paint(ANSI.brightGreen, s);
+  error = (s: unknown): string => this.paint(ANSI.red, s);
+  warn = (s: unknown): string => this.paint(ANSI.yellow, s);
+  info = (s: unknown): string => this.paint(ANSI.cyan, s);
+  dim = (s: unknown): string => this.paint(ANSI.dim, s);
+  accent = (s: unknown): string => this.paint(ANSI.green, s);
+  heading = (s: unknown): string => this.paint(`${ANSI.bold}${ANSI.brightGreen}`, s);
 
   /** Cabeçalho do CloverOS com o trevo. */
-  banner(text: string): string {
-    return this.heading(`${this.symbols.clover} ${text}`);
-  }
+  banner = (text: string): string => this.heading(`${this.symbols.clover} ${text}`);
 
   /** Símbolo de estado colorido. */
-  statusIcon(state: 'ok' | 'fail' | 'pending'): string {
+  statusIcon = (state: 'ok' | 'fail' | 'pending'): string => {
     if (state === 'ok') return this.success(this.symbols.ok);
     if (state === 'fail') return this.error(this.symbols.fail);
     return this.dim(this.symbols.pending);
-  }
+  };
 }
 
 /** Cria um ThemeManager com auto-detecção (ou caps explícitas para testes). */

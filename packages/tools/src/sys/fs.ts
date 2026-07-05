@@ -17,6 +17,8 @@ import { createInterface } from 'node:readline';
 
 import type { ToolInvocation } from '@clover/contracts';
 
+import { session } from './context.js';
+
 export class FsBoundaryError extends Error {
   constructor(message: string) {
     super(message);
@@ -24,7 +26,11 @@ export class FsBoundaryError extends Error {
   }
 }
 
-/** Resolve `rel` dentro do workspace; lança `FsBoundaryError` se escapar. */
+/**
+ * Resolve `rel` dentro do workspace; lança `FsBoundaryError` se escapar. USADO
+ * SÓ pelo cache `.clover` (índice/knowledge/research) — a única coisa que ainda
+ * DEVE ficar confinada. Ferramentas de FS de usuário usam `resolveGlobal`.
+ */
 export function resolveInWorkspace(ctx: ToolInvocation, rel: string): string {
   const ws = resolve(ctx.workspacePath);
   const target = resolve(ws, rel); // rel absoluto → target não começa com ws → barrado
@@ -32,6 +38,38 @@ export function resolveInWorkspace(ctx: ToolInvocation, rel: string): string {
     throw new FsBoundaryError(`caminho fora do workspace: ${rel}`);
   }
   return target;
+}
+
+/**
+ * Base de resolução do agente GLOBAL: o cwd de sessão (roaming) se setado,
+ * senão o workspace da invocação. É o "onde estou" das pernas do agente.
+ */
+export function baseDir(ctx: ToolInvocation): string {
+  return session.get() ?? resolve(ctx.workspacePath);
+}
+
+/**
+ * Resolve um caminho GLOBALMENTE (The OS Explorer): absoluto passa direto,
+ * relativo resolve contra `baseDir`. SEM fronteira — o agente pode ler/andar
+ * por qualquer diretório da máquina (autorizado). A trava de *mutação* segue no
+ * Governor (intent). `path` ausente/`.` → o próprio diretório atual.
+ */
+export function resolveGlobal(ctx: ToolInvocation, path?: string): string {
+  const base = baseDir(ctx);
+  return path && path !== '.' ? resolve(base, path) : base;
+}
+
+/** Lê um arquivo inteiro (texto) por caminho global. Usado por patch. */
+export function readTextGlobal(ctx: ToolInvocation, path: string): string {
+  return readFileSync(resolveGlobal(ctx, path), 'utf8');
+}
+
+/** Escreve um arquivo (criando diretórios pais) por caminho global. */
+export function writeTextGlobal(ctx: ToolInvocation, path: string, content: string): number {
+  const abs = resolveGlobal(ctx, path);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content, 'utf8');
+  return Buffer.byteLength(content, 'utf8');
 }
 
 export interface NumberedLine {

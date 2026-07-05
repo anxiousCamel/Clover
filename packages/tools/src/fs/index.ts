@@ -1,18 +1,29 @@
 /**
- * Namespace `fs/` — Departamento de Fundação (acesso a disco).
+ * Namespace `fs/` — Departamento de Fundação (acesso a disco GLOBAL).
  *
- * Leitura é `read` (sem trava); escrita/patch são `write` (exigem autorização do
- * Governor). Todo acesso passa pelo chokepoint `sys/fs` (fronteira de workspace).
- * As tools declaram `fs.read`/`fs.write` (capability) além do `intent` — os dois
- * andam juntos.
+ * The OS Explorer: o agente lê/anda por QUALQUER diretório da máquina. Leitura e
+ * navegação são `read` (livres, sem prompt); escrita/patch são `write` (o
+ * Governor pede aprovação). Caminhos podem ser relativos (ao cwd de sessão) ou
+ * ABSOLUTOS — `resolveGlobal` não confina ao workspace. A antiga fronteira
+ * (`resolveInWorkspace`) sobrevive só para o cache `.clover`.
  */
 
-import type { CapabilityRequest } from '@clover/contracts';
+import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
+import type { CapabilityRequest, ToolInvocation } from '@clover/contracts';
 import type { LocalTool } from '@clover/tool-abi';
 import { z } from 'zod';
 
 import { defineZodTool } from '../abi.js';
-import { readLinesPaginated, readTextInWorkspace, resolveInWorkspace, writeTextInWorkspace } from '../sys/fs.js';
+import { session } from '../sys/context.js';
+import {
+  baseDir,
+  readLinesPaginated,
+  readTextGlobal,
+  resolveGlobal,
+  writeTextGlobal,
+} from '../sys/fs.js';
 
 const FS_READ: CapabilityRequest[] = [{ kind: 'fs.read' }];
 const FS_WRITE: CapabilityRequest[] = [{ kind: 'fs.write' }];
@@ -24,10 +35,10 @@ const FS_WRITE: CapabilityRequest[] = [{ kind: 'fs.write' }];
 export const readFilePaginatedTool: LocalTool = defineZodTool({
   name: 'read_file_paginated',
   description:
-    'Lê um arquivo por páginas (offset/limit de linhas) via streaming — seguro para arquivos grandes, não estoura tokens. Retorna linhas numeradas e o próximo offset.',
+    'Lê um arquivo por páginas (offset/limit de linhas) via streaming — seguro para arquivos grandes, não estoura tokens. Caminho relativo (ao diretório atual) ou ABSOLUTO. Retorna linhas numeradas e o próximo offset.',
   input: z
     .object({
-      path: z.string().min(1).describe('Caminho relativo ao workspace.'),
+      path: z.string().min(1).describe('Caminho do arquivo — relativo ao dir atual ou absoluto.'),
       offset: z.number().int().min(1).optional().describe('Linha inicial 1-based (default 1).'),
       limit: z.number().int().min(1).max(2000).optional().describe('Máx. de linhas (default 200).'),
     })
@@ -46,7 +57,7 @@ export const readFilePaginatedTool: LocalTool = defineZodTool({
   run: async (args, ctx) => {
     const offset = args.offset ?? 1;
     const limit = args.limit ?? 200;
-    const abs = resolveInWorkspace(ctx, args.path);
+    const abs = resolveGlobal(ctx, args.path);
     const page = await readLinesPaginated(abs, offset, limit);
     return {
       path: args.path,
@@ -66,10 +77,10 @@ export const readFilePaginatedTool: LocalTool = defineZodTool({
 export const writeFileTool: LocalTool = defineZodTool({
   name: 'write_file',
   description:
-    'Escreve (cria/sobrescreve) um arquivo no workspace. Operação de ESCRITA — exige autorização.',
+    'Escreve (cria/sobrescreve) um arquivo, criando diretórios pais. Caminho relativo (ao dir atual) ou ABSOLUTO. Operação de ESCRITA — exige autorização.',
   input: z
     .object({
-      path: z.string().min(1).describe('Caminho relativo ao workspace.'),
+      path: z.string().min(1).describe('Caminho do arquivo — relativo ao dir atual ou absoluto.'),
       content: z.string().describe('Conteúdo completo do arquivo.'),
     })
     .strict(),
@@ -78,7 +89,7 @@ export const writeFileTool: LocalTool = defineZodTool({
   intent: 'write',
   pure: false,
   run: (args, ctx) => {
-    const bytes = writeTextInWorkspace(ctx, args.path, args.content);
+    const bytes = writeTextGlobal(ctx, args.path, args.content);
     return { path: args.path, bytes };
   },
 });
@@ -109,7 +120,7 @@ export const patchFileTool: LocalTool = defineZodTool({
   intent: 'write',
   pure: false,
   run: (args, ctx) => {
-    const original = readTextInWorkspace(ctx, args.path);
+    const original = readTextGlobal(ctx, args.path);
     const count = countOccurrences(original, args.search);
     if (count === 0) {
       // Falha ANTES de tocar o disco — nenhum backup espúrio em patch malsucedido.
@@ -120,11 +131,11 @@ export const patchFileTool: LocalTool = defineZodTool({
       ? original.split(args.search).join(args.replace)
       : original.replace(args.search, args.replace);
     // Backup obrigatório do conteúdo ORIGINAL antes de sobrescrever (mandato FS).
-    // Escrito só após o check acima — patch válido garantido. Passa pela mesma
-    // fronteira de workspace (resolveInWorkspace) que a escrita principal.
+    // Escrito só após o check acima — patch válido garantido. Mesmo caminho
+    // global (`resolveGlobal`) da escrita principal.
     const backup = `${args.path}.bak`;
-    writeTextInWorkspace(ctx, backup, original);
-    writeTextInWorkspace(ctx, args.path, patched);
+    writeTextGlobal(ctx, backup, original);
+    writeTextGlobal(ctx, args.path, patched);
     return { path: args.path, replacements, backup };
   },
 });
@@ -140,5 +151,170 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
+// ===========================================================================
+// Listagem de diretório (motor compartilhado por list_files / list_directory)
+// ===========================================================================
+
+/** Diretórios ruidosos omitidos por padrão na RECURSÃO (não no nível pedido). */
+const LIST_SKIP = new Set(['.git', 'node_modules', 'dist', '.clover', 'coverage']);
+
+interface DirEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'dir';
+  size: number;
+}
+
+const DirEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  type: z.enum(['file', 'dir']),
+  size: z.number().describe('Bytes (0 para diretórios).'),
+});
+
+/** Walk iterativo de `absBase`; `displayBase` prefixa os paths retornados. */
+function walkDir(
+  absBase: string,
+  displayBase: string,
+  recursive: boolean,
+  cap: number,
+): { entries: DirEntry[]; truncated: boolean } {
+  const entries: DirEntry[] = [];
+  let truncated = false;
+  const stack: Array<{ abs: string; rel: string }> = [{ abs: absBase, rel: '' }];
+  let firstDir = true;
+
+  while (stack.length > 0) {
+    const { abs, rel } = stack.pop() as { abs: string; rel: string };
+    let dirents;
+    try {
+      dirents = readdirSync(abs, { withFileTypes: true });
+    } catch (err) {
+      if (firstDir) {
+        // Erro no diretório-alvo → propaga (vira { success:false }).
+        throw new Error(`não foi possível ler '${displayBase}': ${err instanceof Error ? err.message : String(err)}`);
+      }
+      continue; // subdiretório sem permissão → ignora
+    }
+    firstDir = false;
+    for (const d of [...dirents].sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entries.length >= cap) {
+        truncated = true;
+        break;
+      }
+      const childRel = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isDirectory()) {
+        entries.push({ name: d.name, path: childRel, type: 'dir', size: 0 });
+        if (recursive && !LIST_SKIP.has(d.name)) stack.push({ abs: join(abs, d.name), rel: childRel });
+      } else if (d.isFile()) {
+        let size = 0;
+        try {
+          size = statSync(join(abs, d.name)).size;
+        } catch {
+          /* removido em corrida — tamanho 0 */
+        }
+        entries.push({ name: d.name, path: childRel, type: 'file', size });
+      }
+    }
+    if (truncated) break;
+  }
+  entries.sort((a, b) => a.path.localeCompare(b.path));
+  return { entries, truncated };
+}
+
+const ListInput = z
+  .object({
+    path: z.string().optional().describe('Diretório — relativo ao dir atual ou ABSOLUTO (default: dir atual).'),
+    recursive: z.boolean().optional().describe('Descer em subdiretórios (default: só o nível pedido).'),
+    maxResults: z.number().int().min(1).max(5000).optional().describe('Teto de entradas (default 500).'),
+  })
+  .strict();
+
+const ListOutput = z.object({
+  path: z.string(),
+  entries: z.array(DirEntrySchema),
+  total: z.number(),
+  truncated: z.boolean(),
+});
+
+function runList(args: { path?: string; recursive?: boolean; maxResults?: number }, ctx: ToolInvocation) {
+  const absBase = resolveGlobal(ctx, args.path);
+  const { entries, truncated } = walkDir(absBase, args.path ?? absBase, args.recursive ?? false, args.maxResults ?? 500);
+  return { path: absBase, entries, total: entries.length, truncated };
+}
+
+export const listFilesTool: LocalTool = defineZodTool({
+  name: 'list_files',
+  description:
+    'Lista arquivos e pastas de um diretório: nome, tipo e tamanho. USE ESTA para listar, explorar, ver ou navegar arquivos e diretórios. Caminho relativo ou absoluto. Somente leitura.',
+  input: ListInput,
+  output: ListOutput,
+  capabilities: FS_READ,
+  intent: 'read',
+  pure: false,
+  run: runList,
+});
+
+// ===========================================================================
+// list_directory (mobilidade — olhos)
+// ===========================================================================
+
+export const listDirectoryTool: LocalTool = defineZodTool({
+  name: 'list_directory',
+  description:
+    'Lista o conteúdo de um diretório (arquivos/pastas com tipo e tamanho). Aceita caminho relativo ao dir atual ou ABSOLUTO; sem path, usa o diretório atual. Navegação global read-only.',
+  input: ListInput,
+  output: ListOutput,
+  capabilities: FS_READ,
+  intent: 'read',
+  pure: false,
+  run: runList,
+});
+
+// ===========================================================================
+// get_current_directory (mobilidade — onde estou)
+// ===========================================================================
+
+export const getCurrentDirectoryTool: LocalTool = defineZodTool({
+  name: 'get_current_directory',
+  description:
+    'Retorna o caminho do diretório atual (CWD) onde o agente está posicionado. Consulta de posição — use antes de operar com caminhos relativos.',
+  input: z.object({}).strict(),
+  output: z.object({ cwd: z.string(), roaming: z.boolean().describe('true se movido por change_working_directory.') }),
+  capabilities: FS_READ,
+  intent: 'read',
+  pure: false,
+  run: (_args, ctx) => ({ cwd: baseDir(ctx), roaming: session.get() !== null }),
+});
+
+// ===========================================================================
+// change_working_directory (mobilidade — pernas)
+// ===========================================================================
+
+export const changeWorkingDirectoryTool: LocalTool = defineZodTool({
+  name: 'change_working_directory',
+  description:
+    'Move o agente para outro diretório (as "pernas"): atualiza o CWD de sessão e o process.cwd(). Caminhos seguintes passam a resolver a partir daqui. Aceita relativo ou ABSOLUTO. Navegação livre (não destrutiva).',
+  input: z.object({ path: z.string().min(1).describe('Diretório destino — relativo ao atual ou absoluto.') }).strict(),
+  output: z.object({ cwd: z.string(), previous: z.string() }),
+  capabilities: FS_READ,
+  intent: 'read',
+  pure: false,
+  run: (args, ctx) => {
+    const previous = baseDir(ctx);
+    const target = resolveGlobal(ctx, args.path);
+    const cwd = session.set(target); // valida existência/tipo; move process.cwd()
+    return { cwd, previous };
+  },
+});
+
 /** Todas as tools do namespace fs/. */
-export const fsTools: LocalTool[] = [readFilePaginatedTool, writeFileTool, patchFileTool];
+export const fsTools: LocalTool[] = [
+  readFilePaginatedTool,
+  writeFileTool,
+  patchFileTool,
+  listFilesTool,
+  listDirectoryTool,
+  getCurrentDirectoryTool,
+  changeWorkingDirectoryTool,
+];

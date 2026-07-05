@@ -14,7 +14,7 @@ import type { LocalTool } from '@clover/tool-abi';
 import { z } from 'zod';
 
 import { defineZodTool } from '../abi.js';
-import { readTextInWorkspace } from '../sys/fs.js';
+import { readTextGlobal } from '../sys/fs.js';
 import {
   analyzeSource,
   findDocumentation,
@@ -137,7 +137,7 @@ export const analyzeModuleTool: LocalTool = defineZodTool({
   pure: false,
   run: (args, ctx) => {
     assertSupported(args.path);
-    const text = readTextInWorkspace(ctx, args.path);
+    const text = readTextGlobal(ctx, args.path);
     const a = analyzeSource(args.path, text);
     return { path: args.path, ...a };
   },
@@ -168,7 +168,7 @@ export const queryAstSymbolTool: LocalTool = defineZodTool({
   pure: false,
   run: (args, ctx) => {
     assertSupported(args.path);
-    const text = readTextInWorkspace(ctx, args.path);
+    const text = readTextGlobal(ctx, args.path);
     const matches = querySymbol(args.path, text, args.name);
     return { path: args.path, name: args.name, found: matches.length > 0, matches };
   },
@@ -204,7 +204,7 @@ export const findInheritanceTool: LocalTool = defineZodTool({
   pure: false,
   run: (args, ctx) => {
     assertSupported(args.path);
-    const text = readTextInWorkspace(ctx, args.path);
+    const text = readTextGlobal(ctx, args.path);
     return { path: args.path, entries: findInheritance(args.path, text, args.name) };
   },
 });
@@ -241,16 +241,22 @@ export const findDocumentationTool: LocalTool = defineZodTool({
   pure: false,
   run: (args, ctx) => {
     assertSupported(args.path);
-    const text = readTextInWorkspace(ctx, args.path);
+    const text = readTextGlobal(ctx, args.path);
     const docs = findDocumentation(args.path, text, args.name);
     return { path: args.path, name: args.name, found: docs.length > 0, docs };
   },
 });
 
-/** Todas as tools do namespace ast/. */
+import { semanticAstTools } from './semantic.js';
+
+export * from './semantic.js';
+export { getLanguageService, disposeAllLanguageServices } from './program.js';
+
+/** Todas as tools do namespace ast/ (sintáticas single-file + motor semântico). */
 export const astTools: LocalTool[] = [
   analyzeModuleTool,
   queryAstSymbolTool,
   findInheritanceTool,
   findDocumentationTool,
+  ...semanticAstTools,
 ];

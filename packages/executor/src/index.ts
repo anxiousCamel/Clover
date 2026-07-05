@@ -321,8 +321,10 @@ export function resolveValue(value: IRValue, outputs: Record<string, unknown>): 
 
 /** Indexa um caminho por pontos (ex.: 'files.0.name'). */
 function getPath(base: unknown, path: string, nodeId: string): unknown {
+  if (!path) return base;
   let cur: unknown = base;
   for (const seg of path.split('.')) {
+    if (!seg) continue; // segmento vazio (ex.: trailing dot) → ignora
     if (cur === null || cur === undefined) {
       throw new RefError(nodeId, `path '${path}' inválido: segmento '${seg}' sobre valor nulo`);
     }

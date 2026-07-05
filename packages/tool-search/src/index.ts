@@ -19,16 +19,38 @@ export function tokenize(s: string): string[] {
   return s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 }
 
-/** Pontua um descritor contra os termos da consulta. */
+/**
+ * Peso por intent (menor privilégio na SELEÇÃO): tools destrutivas/de escrita
+ * precisam de evidência lexical MAIS FORTE para entrar no contexto do Planner.
+ * Incidente real: "listar os arquivos da area de trabalho" selecionou
+ * `git_clean` (destructive) por overlap acidental de termos — com o peso, uma
+ * tool `read` equivalente sempre vence o empate.
+ */
+const INTENT_WEIGHT: Record<string, number> = { read: 1, write: 0.75, destructive: 0.5 };
+
+/**
+ * Stopwords (PT + EN) sem valor discriminativo. Removidas SÓ dos termos da
+ * consulta na pontuação — senão "listar os arquivos DA área DE trabalho" pontua
+ * tools por casar `de`/`da`/`os`, afogando o sinal real (`listar`, `arquivos`).
+ */
+const STOPWORDS = new Set([
+  'o', 'a', 'os', 'as', 'de', 'da', 'do', 'das', 'dos', 'e', 'ou', 'um', 'uma',
+  'para', 'por', 'com', 'no', 'na', 'nos', 'nas', 'que', 'em', 'ao', 'aos',
+  'consegue', 'me', 'meu', 'minha', 'the', 'a', 'an', 'of', 'to', 'in', 'on',
+  'for', 'and', 'or', 'is', 'my', 'can', 'you', 'please',
+]);
+
+/** Pontua um descritor contra os termos da consulta (ponderado por intent). */
 export function scoreTool(queryTerms: string[], tool: ToolDescriptor): number {
   const haystack = new Set(tokenize(`${tool.name} ${tool.description}`));
   const nameTerms = new Set(tokenize(tool.name));
   let score = 0;
   for (const term of queryTerms) {
+    if (STOPWORDS.has(term)) continue;
     if (haystack.has(term)) score += 1;
     if (nameTerms.has(term)) score += 1; // bônus: casar no nome vale mais
   }
-  return score;
+  return score * (INTENT_WEIGHT[tool.intent ?? 'read'] ?? 1);
 }
 
 /** Implementação lexical (sem embeddings; determinística e offline). */

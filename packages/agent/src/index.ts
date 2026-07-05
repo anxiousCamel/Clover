@@ -16,6 +16,7 @@
  * em paralelo como atores isolados (ver testes).
  */
 
+import process from 'node:process';
 import type { Goal, RunResult } from '@clover/contracts';
 import { gitCleanTool, gitRestoreTool } from '@clover/tools';
 
@@ -59,6 +60,11 @@ export interface AgentDeps {
   knowledge?: AgentKnowledge;
   budget?: TokenBudget;
   maxTools?: number;
+  /**
+   * System prompt injetado no ContextBuilder. Default: info do SO + limitações
+   * conhecidas (sem visão, sem áudio). Passe string vazia para suprimir.
+   */
+  systemPrompt?: string;
 }
 
 export interface AgentRunResult {
@@ -123,7 +129,16 @@ function extractBuildFailure(result: RunResult): string | null {
 }
 
 export class Agent {
-  constructor(private readonly deps: AgentDeps) {}
+  private readonly systemPrompt: string;
+
+  constructor(private readonly deps: AgentDeps) {
+    // System prompt: default = info do SO + limitações conhecidas; ou override do caller.
+    if (deps.systemPrompt !== undefined) {
+      this.systemPrompt = deps.systemPrompt;
+    } else {
+      this.systemPrompt = buildDefaultSystemPrompt();
+    }
+  }
 
   async run(goal: Goal): Promise<AgentRunResult> {
     const tools = this.deps.kernel.listTools();
@@ -141,6 +156,7 @@ export class Agent {
     const context = this.deps.contextBuilder.build({
       query: goal.text,
       budget: this.deps.budget ?? { maxTokens: 4096 },
+      systemPrompt: this.systemPrompt || undefined, // Inclui info do OS + limitações
       tools,
       toolSearch: this.deps.toolSearch,
       maxTools: this.deps.maxTools ?? 8,
@@ -195,7 +211,34 @@ export class Agent {
           `Erro de build/test:\n${failure}`,
       };
     }
-    // Não deve chegar aqui (o loop sempre retorna dentro).
+  // Não deve chegar aqui (o loop sempre retorna dentro).
     return this.run(currentGoal);
   }
+}
+
+/**
+ * Constrói o system prompt default: info do SO real + limitações conhecidas.
+ * Inclui caminhos reais (Home/Desktop) para o LLM não alucinar paths Unix no Windows.
+ */
+function buildDefaultSystemPrompt(): string {
+  const osType = process.platform; // 'win32' | 'darwin' | 'linux'
+  const homeDir = process.env.USERPROFILE ?? process.env.HOME ?? '/home/user';
+  const desktopDir = osType === 'win32'
+    ? `${homeDir}\\Desktop`
+    : `${homeDir}/Desktop`;
+  return [
+    '## Informações do Sistema',
+    `- Sistema Operacional: ${osType} (${process.arch})`,
+    `- Diretório Home: ${homeDir}`,
+    `- Diretório Desktop: ${desktopDir}`,
+    `- Caminhos no Windows usam '\\' (ex.: C:\\Users\\Admin\\Desktop)`,
+    `- Caminhos no Linux/macOS usam '/' (ex.: /home/user/Desktop)`,
+    '',
+    '## Limitações conhecidas do CloverOS',
+    '- NÃO possui capacidade de VISÃO/OCR: não analisa imagens, fotos ou screenshots.',
+    '- NÃO possui capacidade de ÁUDIO: não escuta, transcreve ou processa som.',
+    '- NÃO possui capacidade de VIDEO: não analisa ou assiste vídeos.',
+    '- Para arquivos de imagem anexados, explique que não pode vê-los.',
+    '',
+  ].join('\n');
 }

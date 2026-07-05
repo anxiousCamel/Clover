@@ -28,6 +28,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@clover/tool-search": "workspace:*",
     "@types/node": "^22.10.0",
     "vitest": "^2.1.9"
   }

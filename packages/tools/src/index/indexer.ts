@@ -35,7 +35,7 @@ export interface RefreshResult {
 }
 
 /** Walk iterativo (sem recursão de pilha) sob `absRoot`, pulando `SKIP_DIRS`. */
-function* walkFiles(absRoot: string): Generator<string> {
+export function* walkFiles(absRoot: string): Generator<string> {
   const stack: string[] = [absRoot];
   while (stack.length > 0) {
     const dir = stack.pop() as string;

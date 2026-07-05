@@ -171,5 +171,12 @@ export const renameSymbolTool: LocalTool = defineZodTool({
   },
 });
 
-/** Todas as tools do namespace index/. */
-export const indexTools: LocalTool[] = [workspaceIndexTool, findReferencesTool, renameSymbolTool];
+/**
+ * Tools registradas do namespace index/.
+ *
+ * DEPRECIADO (fora do registro, exports mantidos por ABI): `findReferencesTool`
+ * e `renameSymbolTool` name-based foram SUBSTITUÍDOS no registro global pelas
+ * versões SEMÂNTICAS de `ast/semantic.ts` (mesmos nomes, resolução por binding
+ * via TypeChecker; rename agora APLICA com backup .bak).
+ */
+export const indexTools: LocalTool[] = [workspaceIndexTool];

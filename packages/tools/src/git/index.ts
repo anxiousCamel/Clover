@@ -14,7 +14,6 @@
  * todo pathspec vai depois de `--` para impedir injeção de opção.
  */
 
-import { join } from 'node:path';
 
 import type { CapabilityRequest, ToolInvocation } from '@clover/contracts';
 import type { LocalTool } from '@clover/tool-abi';
@@ -22,6 +21,8 @@ import { z } from 'zod';
 
 import { defineZodTool } from '../abi.js';
 import { runBinary, type RunBinaryResult } from '../sys/exec.js';
+import { baseDir, resolveGlobal } from '../sys/fs.js';
+import { findGitRoot } from '../sys/context.js';
 import {
   parseBlamePorcelain,
   parseBranchList,
@@ -41,9 +42,9 @@ const GIT_EXEC: CapabilityRequest[] = [{ kind: 'proc.exec', scopeHint: 'git' }];
 /** Flags base: sem cor e sem aspas de path (saída estável p/ parsing). */
 const BASE = ['-c', 'core.quotepath=false', '-c', 'color.ui=false'];
 
-/** Resolve um cwd relativo dentro do workspace (o Sandbox barra escapes). */
+/** Resolve um cwd (relativo ao dir de sessão ou absoluto) para as tools git. */
 function resolveCwd(ctx: ToolInvocation, rel?: string): string | undefined {
-  return rel ? join(ctx.workspacePath, rel) : undefined;
+  return rel ? resolveGlobal(ctx, rel) : undefined;
 }
 
 /** Rejeita refs/pathspecs que o git interpretaria como flag (injeção de opção). */
@@ -58,12 +59,27 @@ function gitError(r: RunBinaryResult): string {
   return `git: ${line || `saiu com código ${r.exitCode}`}`;
 }
 
+/**
+ * Guarda de contexto (The OS Explorer): o agente anda por diretórios que podem
+ * NÃO ser repositórios git. Antes de rodar, valida `.git` no cwd/ancestrais e,
+ * se ausente, devolve erro que GUIA o LLM de volta às FS tools — em vez do
+ * críptico "fatal: not a git repository".
+ */
+function assertGitRepo(cwd: string): void {
+  if (findGitRoot(cwd) === null) {
+    throw new Error(
+      `Not a git repository (dir: ${cwd}). Use basic FS tools (list_directory / read_file_paginated) instead.`,
+    );
+  }
+}
+
 /** Executa `git <args>` e devolve o resultado bruto (ou lança erro estruturado). */
 async function runGit(
   ctx: ToolInvocation,
   args: string[],
   opts: { cwd?: string; timeoutMs?: number; maxBuffer?: number } = {},
 ): Promise<RunBinaryResult> {
+  assertGitRepo(opts.cwd ?? baseDir(ctx));
   const r = await runBinary({
     bin: 'git',
     args: [...BASE, ...args],
@@ -397,9 +413,9 @@ export const gitCheckoutBranchTool: LocalTool = defineZodTool({
 export const gitRestoreTool: LocalTool = defineZodTool({
   name: 'git_restore',
   description:
-    'Descarta alterações na árvore de trabalho de um ou mais arquivos (`git restore -- <paths>`). ' +
-    'Se staged=true, desfaz o stage (`git restore --staged`). ' +
-    'ATENÇÃO: as alterações na working tree são perdidas permanentemente.',
+    'DESCARTA PERMANENTEMENTE alterações não commitadas (`git restore`). Ferramenta DESTRUTIVA ' +
+    'de rollback/desfazer — uso exclusivo quando o objetivo é reverter mudanças. Se staged=true, ' +
+    'desfaz apenas o stage. Requer aprovação.',
   input: z
     .object({
       paths: z.array(z.string().min(1)).min(1).describe('Caminhos relativos ao workspace (mínimo 1).'),
@@ -462,9 +478,9 @@ export const gitRevertTool: LocalTool = defineZodTool({
 export const gitCleanTool: LocalTool = defineZodTool({
   name: 'git_clean',
   description:
-    'Remove arquivos/diretórios NÃO rastreados (`git clean -fd`). Respeita `.gitignore` ' +
-    '(não toca ignorados como node_modules). ATENÇÃO: remove TODOS os untracked da working ' +
-    'tree — não só os de uma tentativa específica. Complementa `git_restore` no rollback total.',
+    'APAGA PERMANENTEMENTE conteúdo untracked do repositório git (`git clean -fd`). Ferramenta ' +
+    'DESTRUTIVA — uso exclusivo: rollback/limpeza de lixo deixado por builds falhos, após ' +
+    'git_restore. Respeita .gitignore. Requer aprovação.',
   input: z
     .object({
       dryRun: z.boolean().optional().describe('Só reporta o que removeria (`-n`), sem apagar.'),

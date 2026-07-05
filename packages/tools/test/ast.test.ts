@@ -170,10 +170,12 @@ describe('ast/ tools (handler → ToolResult)', () => {
     expect(res.error).toContain('não suportada');
   });
 
-  it('path fora do workspace → { success:false } (fronteira aplicada)', async () => {
-    const res = (await analyzeModuleTool.handler({ path: '../escape.ts' }, ctx())) as ToolResult;
-    expect(res.success).toBe(false);
-    expect(res.error).toContain('fora do workspace');
+  it('caminho ABSOLUTO agora é permitido (The OS Explorer): lê o próprio fixture', async () => {
+    // Fronteira de workspace removida para reads; passar o abs do mod.ts funciona.
+    const abs = join(dir, 'mod.ts');
+    const res = (await analyzeModuleTool.handler({ path: abs }, ctx())) as ToolResult;
+    expect(res.success).toBe(true);
+    expect((res.output as { classes: Array<{ name: string }> }).classes.map((c) => c.name)).toContain('Base');
   });
 
   it('arquivo inexistente → { success:false } (erro de I/O tratado)', async () => {

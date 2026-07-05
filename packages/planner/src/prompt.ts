@@ -15,7 +15,13 @@ export const PLANNER_SYSTEM = [
   '  {"kind":"ref","nodeId":"<id>","path":"<campo>"}.',
   '- "outputs" lista as referências do resultado final. IMPORTANTE: o campo "nodeId" em outputs DEVE ser exatamente um dos IDs que você declarou em "nodes".',
   '- Para perguntas gerais ou conversação, use a ferramenta "respond" com args {"message": "<sua resposta>"}.',
+  '- Se a meta NÃO exigir ferramentas, use "respond".',
   '- Não explique; produza apenas o plano no formato exigido.',
+  '',
+  '# Gerenciamento de Contexto',
+  '- Você tem orçamento LIMITADO de tokens — apenas ferramentas RELEVANTES para a meta estão listadas.',
+  '- Se a pergunta for sobre as CAPACIDADES do sistema ("o que você sabe fazer?", "quais ferramentas possui?"), use a ferramenta "list_available_tools" para obter o catálogo completo.',
+  '- Use "list_files" para listar diretórios; NÃO use git_clean/git_restore para explorar arquivos.',
 ].join('\n');
 
 export function buildPlannerPrompt(
@@ -48,6 +54,13 @@ export function buildRepairPrompt(
     '',
     'A tentativa anterior foi REJEITADA pelos seguintes motivos:',
     ...errors.map((e) => `- ${e}`),
+    '',
+    'Sugestões de correção:',
+    '- Ferramenta desconhecida? Verifique o nome correto na lista acima.',
+    '- ID de nó não encontrado? Use apenas os IDs que você declarou em "nodes".',
+    '- Plano muito curto ou vazio? Pode ser uma pergunta geral — use "respond" com uma mensagem amigável.',
+    '- Se a meta é ambígua ou muito vaga, responda educadamente pedindo mais detalhes e sugerindo ações concretas (ex.: "Tente: listar arquivos, buscar no código, ou /help para ver os comandos.").',
+    '',
     'Corrija e gere um novo plano válido.',
   ].join('\n');
 }

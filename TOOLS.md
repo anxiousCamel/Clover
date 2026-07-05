@@ -45,6 +45,13 @@ Refs/pathspecs sanitizados por `assertSafeRef` (rejeita arg com `-` inicial — 
 | `git_restore` | `destructive` | `{ paths[], staged?, cwd? }` | restored (count) |
 | `git_clean` | `destructive` | `{ dryRun?, cwd? }` | removed[], dryRun |
 
+**Resiliência de contexto (fim da alucinação git):** como o agente anda por qualquer
+diretório, TODA tool git valida (via `runGit` → `assertGitRepo`) se o cwd/ancestrais
+contêm `.git`. Se não, retorna `{ success:false, error: "Not a git repository (...). Use
+basic FS tools (list_directory / read_file_paginated) instead." }` — guia o LLM às FS
+tools em vez do críptico "fatal: not a git repository". Simétrico no motor semântico
+AST: exige `tsconfig.json` (senão "Not a TS project ... Use basic FS tools instead").
+
 `git_restore` + `git_clean` formam o **rollback total** do `Agent.runWithHeal`: na falha final da auto-cura, `git_restore -- .` reverte arquivos rastreados e `git_clean -fd` remove os untracked deixados pela tentativa (respeita `.gitignore`). **Atenção:** `git_clean` remove **TODOS** os untracked da working tree, não só os de uma tentativa específica — por isso `intent: destructive` e uso restrito ao caminho de falha final (nunca entre tentativas).
 
 ### Departamento FS (`@clover/tools`, namespace `fs/`) — leitura + escrita
@@ -57,6 +64,19 @@ Escritas exigem autorização do Governor (intent `write`).
 | `read_file_paginated` | `{ path, offset?≥1, limit?≤2000 }` | lines[]{n,text}, totalReturned, offset, nextOffset, eof | read |
 | `write_file` | `{ path, content }` | path, bytes | write |
 | `patch_file` | `{ path, search, replace, all? }` | path, replacements, **backup** | write |
+| `list_files` | `{ path?, recursive?, maxResults? }` | entries[]{name,path,type,size}, truncated | read |
+| `list_directory` | `{ path?, recursive?, maxResults? }` | path(abs), entries[], total, truncated | read |
+| `get_current_directory` | `{}` | cwd, roaming | read |
+| `change_working_directory` | `{ path }` | cwd, previous | read |
+
+**The OS Explorer (agente global):** `path` pode ser relativo (ao diretório atual) ou
+**ABSOLUTO** — `resolveGlobal` NÃO confina ao workspace. Leitura/navegação são livres
+em qualquer diretório da máquina (sem prompt). `change_working_directory` move o "cwd
+de sessão" (`sys/context.session`) + `process.cwd()`; o REPL propaga esse cwd ao
+próximo goal (roaming persistente entre turnos). A antiga fronteira
+(`resolveInWorkspace`) sobrevive só para o cache `.clover` (índice/knowledge/research).
+A trava de **mutação** continua sendo o Governor por intent — `write`/`destructive`
+pedem aprovação; reads passam direto (RM já funcionava assim).
 
 `write_file` cria diretórios pais recursivamente (`mkdir -p`). `patch_file` grava um
 backup `<path>.bak` do conteúdo **original** antes de sobrescrever — só *depois* de
@@ -93,6 +113,28 @@ Formas de `import` cobertas: default · named · namespace (`* as`) · side-effe
 Formas de `export` cobertas: inline em declaração · `export {}` · `export {} from` ·
 `export * from` · `export default`. Extensões: `.ts/.tsx/.js/.jsx/.mts/.cts` — outra
 extensão retorna `{ success: false }` (degradação graciosa, nunca lança).
+
+#### Motor Semântico (`ast/program.ts` + `ast/semantic.ts`) — TypeChecker real
+
+Resolução por **binding** via `ts.LanguageService`: um `save()` na classe A jamais se
+confunde com `save()` na classe B (testado). **Anti-OOM:** um LanguageService **lazy e
+cacheado por workspace** (LRU, cap 2, `dispose()` no despejo); snapshots versionados
+por **mtime** → só arquivos alterados reparsam entre chamadas (mesma filosofia do
+Workspace Index). Alvo das tools: `{ path, name, line? }` — múltiplas ocorrências só
+exigem `line` se resolverem para símbolos DISTINTOS (identidade do checker, aliases
+resolvidos); caso contrário o erro estruturado lista os candidatos.
+
+| Tool | Intent | Saída (essência) |
+|------|--------|------------------|
+| `find_references` | read | references[]{path,line,column,isDefinition,isWriteAccess} — semântico |
+| `find_callers` | read | incoming call hierarchy: callers[]{name,path,line,callLines[]} |
+| `find_callees` | read | outgoing call hierarchy: callees[]{name,path,line,callLines[]} |
+| `rename_symbol` | write | **APLICA** rename multi-arquivo com backup `.bak` por arquivo modificado; `dryRun` lista sem aplicar |
+
+Estas versões semânticas **substituem no registro** as antigas name-based do `index/`
+(exports mantidos por ABI, depreciados). `rename_symbol` valida o novo identificador,
+aplica edits de trás pra frente (offsets estáveis) e NUNCA toca homônimos não
+relacionados.
 
 ### Workspace Index (`@clover/tools`, namespace `index/`) — FASE 2.5
 
@@ -148,6 +190,57 @@ Todas `read` + `fs.read`; mesma exceção de cache do `index/`.
 ciclos entre pacotes do monorepo via specifier de pacote não são detectados.
 `find_large_*` usa spans (`endLine`) persistidos no índice (schema v2).
 
+### Knowledge Base (`@clover/tools`, namespace `knowledge/`) — FASE 1 ("O Cérebro")
+
+Banco de conhecimento **híbrido** (mandato): **Markdown legível** em
+`.clover/knowledge/<id>.md` = fonte da verdade (frontmatter próprio, editável à mão)
++ **SQLite** (`.clover/knowledge.db`, sql.js) = índice de consulta reconstruível.
+Ranqueamento por **BM25 real** (`knowledge/rank.ts` — Okapi, k1=1.2/b=0.75, puro e
+determinístico). Escritas passam pelo Governor (`write`/`destructive` — os .md são
+conteúdo durável, NÃO cache); consultas são `read`.
+
+| Tool | Intent | Entrada (Zod) | Saída (essência) |
+|------|--------|---------------|------------------|
+| `save_memory` | write | `{ title, content, tags? }` | doc completo (id = slug do título) |
+| `update_memory` | write | `{ id, title?, content?, tags? }` | doc atualizado |
+| `delete_memory` | destructive | `{ id }` | deleted (poda links reversos nos .md dos linkers) |
+| `query_memory` | read | `{ text?, tag? }` | busca estruturada (LIKE + tag) |
+| `semantic_search` | read | `{ query, topK? }` | ranqueado BM25, `engine:'bm25'` |
+| `list_memories` | read | `{ tag? }` | resumos ordenados |
+| `memory_stats` | read | `{}` | total, histograma de tags, links, bytes |
+| `compact_memory` | write | `{}` | reconcilia md⇄sqlite (editados à mão entram, órfãos saem, links pendurados podados) |
+| `tag_memory` | write | `{ id, add?, remove? }` | tags finais |
+| `link_memories` | write | `{ from, to, bidirectional? }` | grafo de conhecimento nos frontmatters |
+
+**Escopo honesto:** `semantic_search` é recuperação **léxica** (BM25 — algoritmo
+clássico de search engine), não embedding neural; a descrição da tool declara isso.
+Embeddings entram atrás da MESMA interface quando houver modelo local disponível.
+
+### Deep Research (`@clover/tools`, namespace `research/`) — FASE 3
+
+Pesquisa externa com **fetcher injetável** (`makeResearchTools(fetcher)`): produção usa
+o `fetch` global do Node; testes injetam fake determinístico (precedente OllamaProvider
+— caminho vivo real, teste sem rede). Primeiro departamento com capability **`net`**.
+**Timeout real** por chamada (`timeoutMs` → AbortController). Cache em
+`.clover/research-cache/` (`maxAgeMs` controla reuso; falha de rede degrada
+graciosamente para cache velho).
+
+| Tool | Entrada (Zod) | Saída (essência) |
+|------|---------------|------------------|
+| `fetch_documentation` | `{ url, timeoutMs?, maxAgeMs? }` | title, text (HTML→texto), fromCache, truncated |
+| `fetch_markdown` | `{ url, ... }` | markdown, headings[] |
+| `fetch_github_readme` | `{ owner, repo, ... }` | markdown + headings via raw.githubusercontent (HEAD) |
+| `fetch_openapi` | `{ url, ... }` | title, version, pathCount, operations[]{method,path,summary} |
+| `fetch_json_schema` | `{ url, ... }` | dialect, title, type, required[], properties de topo |
+| `cache_documentation` | `{ url, content, contentType? }` | semeia cache manualmente (offline) |
+| `search_documentation` | `{ query, topK? }` | BM25 **no cache local** (engine:'bm25-local-cache') |
+| `summarize_documentation` | `{ url, ... }` | headings tree + 1º parágrafo/seção + contagens (extrativo) |
+
+**Escopo honesto:** `search_documentation` busca no cache local — NÃO é motor de busca
+web (sem API de search). `fetch_openapi` só JSON (sem parser YAML no arsenal).
+`summarize_documentation` é extrativo/determinístico — prosa é papel do Planner.
+HTML→texto por regex estruturada (páginas de doc), não um browser.
+
 ## Roadmap de departamentos
 
 Cada departamento segue o **mesmo padrão** do `git/` (Zod in/out, capability de
@@ -160,7 +253,7 @@ São construídos como fatias verticais — uma de cada vez, real e testada.
 | 2 | Engineering (refactor/generate/compile/lint/format) | `dev/` | 🟡 search_code + run_build_and_test implementados |
 | 3 | Build (npm/pnpm/cargo/go/gradle/...) | `build/` | ⬜ planejado |
 | 4 | CI/CD (test/coverage/bench/docker/k8s) | `ci/` | ⬜ planejado |
-| 5 | AST (símbolos/refs/callers/tipos) | `ast/` `index/` | 🟡 4 tools single-file + Workspace Index (workspace_index, find_references, rename_symbol preview) |
+| 5 | AST (símbolos/refs/callers/tipos) | `ast/` `index/` | 🟢 sintático + **Motor Semântico** (find_references/callers/callees por binding; rename_symbol aplica com .bak) + Workspace Index |
 | 5.5 | Code Intelligence (grafo/dead-code/métricas/convenções) | `intelligence/` | 🟡 15 tools index-backed (ciclos, deps/reversas, unused, large-*, todos/fixmes, env, entrypoints, summary) |
 | 6 | Documentation (docs/mermaid/api/readme) | `documentation/` | ⬜ planejado |
 | 7 | QA (mutation/property/snapshot/stress) | `qa/` | ⬜ planejado |
@@ -172,8 +265,8 @@ São construídos como fatias verticais — uma de cada vez, real e testada.
 | 13 | Windows (registry/services/wmi/etw/pe) | `windows/` | ⬜ planejado |
 | 14 | Linux (systemd/journal/perf/ebpf) | `linux/` | ⬜ planejado |
 | 15 | Browser (Playwright) | `browser/` | ⬜ planejado |
-| 16 | Deep Research | `research/` | ⬜ planejado |
-| 17 | Knowledge (vector/graph/embeddings) | `knowledge/` | 🟡 pacotes-base existem (`@clover/knowledge-*`) |
+| 16 | Deep Research | `research/` | 🟡 8 tools reais (fetcher injetável, cache, BM25 local); busca web real quando houver API |
+| 17 | Knowledge (vector/graph/embeddings) | `knowledge/` | 🟡 10 tools reais (híbrido md+SQLite, BM25); embeddings neurais quando houver modelo local |
 | 18 | Observability (otel/prom/traces) | `observability/` | ⬜ planejado |
 | 19 | AI (multiagente: planner/coder/reviewer/...) | `ai/` | 🟡 planner/agent existem |
 

@@ -790,6 +790,233 @@ morto, função de 60 linhas, env vars, manifests).
 
 ---
 
+## Fatia — Expurgo (FASE 0) + Knowledge Base (FASE 1) — ✅ CONCLUÍDA
+
+### FASE 0 — Auditoria anti-código-fantasma (resultado)
+
+Varredura de `mock|stub|fake|not implemented|placeholder|hardcoded` em
+`packages/tools/src` + `packages/agent/src` e verificação das 39 tools registradas:
+
+- **Nenhum código fantasma encontrado em `src/`.** Todos os hits do grep são palavras
+  incidentais em comentários/descrições. Mocks existem SÓ em arquivos de teste
+  (`MockProvider`, mock de `run_build_and_test` — legítimos por design).
+- `dev/build.ts` verificado: `run_build_and_test` executa engines reais via Sandbox.
+- **Rollback total já entregue** na fatia FASE 2.5 (`git restore -- .` + `git clean
+  -fd` no `defaultRollback`, provado com repo git real) — item do mandato já satisfeito.
+- Única tool com limitação de execução: `rename_symbol` — **dry-run declarado no
+  schema** (`applied: false` literal) e na descrição; retorna dados REAIS do índice.
+  Limitação documentada ≠ ghost code.
+- **Bug real encontrado e corrigido durante esta fatia** (na base nova): links
+  reversos órfãos ficavam nos `.md` após delete/reconcile (índice podava, arquivo
+  mentia). `delete()` agora reescreve os .md dos linkers; `reconcile()` poda
+  pendurados em md+índice coerentemente. Coberto por teste.
+
+### FASE 1 — Knowledge Base Department (`packages/tools/src/knowledge/`)
+
+Arquitetura híbrida do mandato, real:
+
+- [x] **`markdown.ts`** — formato próprio de frontmatter (sem dep YAML): serialize ⇄
+      parse identidade testada; `slugify` com normalização de acentos.
+- [x] **`rank.ts`** — **BM25/Okapi real** (k1=1.2, b=0.75, IDF suavizado), puro e
+      determinístico (empate → id asc). Honesto: recuperação léxica, não embedding —
+      declarado na descrição de `semantic_search`; embeddings entram atrás da mesma
+      interface quando houver modelo local.
+- [x] **`store.ts`** — `KnowledgeStore` híbrido: `.md` = fonte da verdade humana;
+      SQLite (schema versionado, mesmo padrão do index) = consulta. `reconcile()` =
+      implementação real de `compact_memory` (md editado à mão entra, órfão sai,
+      links pendurados podados nos DOIS lados).
+- [x] **`shared/sqljs.ts`** — loader único do WASM compartilhado entre stores (DRY;
+      `index/store.ts` refatorado para usá-lo).
+- [x] **10 tools registradas (total: 49):** save/update/delete_memory, query_memory
+      (LIKE+tag) vs semantic_search (BM25) — distinção real entre as duas —,
+      list_memories, memory_stats, compact_memory, tag_memory, link_memories
+      (grafo bidirecional opcional nos frontmatters).
+      → `test/knowledge.test.ts` (15 testes: identidade do formato, BM25/IDF,
+      ciclo de vida completo, colisão de slug, persistência entre reopens,
+      reconciliação com edição manual + arquivo apagado).
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **115 passed / 4 skipped** (13 suítes; +`knowledge` 15). ✅
+- `build:os` → **exit 0**. Registro: **49 tools**.
+
+---
+
+## Fatia — FASE 3: Deep Research Department — ✅ CONCLUÍDA
+
+### Arquitetura (`packages/tools/src/research/`)
+
+- [x] **Fetcher injetável** (`makeResearchTools(fetcher)`): produção = `fetch` global
+      do Node (`researchTools`); testes = fake determinístico com rotas fixas e modo
+      de falha. Mesmo código nos dois caminhos (factory/closure) — precedente
+      OllamaProvider. **Primeiro departamento com capability `net`.**
+- [x] **Timeout/cancelamento REAIS:** `timeoutMs` por chamada → `AbortController` +
+      abort no fetch (testado com fetcher que só resolve no abort). Primeiro grupo de
+      tools a satisfazer o requisito de timeout do mandato de verdade.
+- [x] **Cache** (`cache.ts`): `.clover/research-cache/<sha256[:24]>.json`; `maxAgeMs`
+      controla reuso; **falha de rede degrada graciosamente para cache velho**
+      (testado); `cache_documentation` semeia manualmente → pesquisa offline.
+- [x] **Motores puros:** `html.ts` (HTML→texto por regex estruturada: drop de
+      script/style/nav, entidades com acentos Latin-1, blocos preservados — não é um
+      browser, declarado) e `summarize.ts` (sumarização EXTRATIVA determinística:
+      árvore de headings fora de cercas de código, 1º parágrafo por seção, contagens).
+- [x] **8 tools registradas (total: 57):** fetch_documentation, fetch_markdown,
+      fetch_github_readme (raw HEAD), fetch_openapi (JSON; YAML declarado não
+      suportado), fetch_json_schema, cache_documentation, search_documentation
+      (**BM25 reusado do knowledge/** — DRY; busca no cache LOCAL, não é search web,
+      declarado no nome do engine `bm25-local-cache`), summarize_documentation.
+      → `test/research.test.ts` (11 testes: HTML→texto, cache hit/miss/idade,
+      degradação em falha de rede, timeout real, 404 estruturado, OpenAPI ordenado,
+      JSON Schema, busca ranqueada, summarize offline).
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **126 passed / 4 skipped** (14 suítes; +`research` 11). ✅
+- `build:os` → **exit 0**. Registro: **57 tools**.
+- Bug real de motor achado pelo teste e corrigido: entidades HTML acentuadas
+  (`&aacute;` etc.) não decodificavam — família acute/grave/circ/tilde/uml/cedil
+  agora decodifica via combining char + NFC.
+
+---
+
+## Fatia — SRE (FASE 0) + Motor Semântico (FASE 2) — ✅ CONCLUÍDA
+
+### FASE 0 — Estabilização (bugs reais corrigidos)
+
+1. **Crash do REPL (`.paint`) — causa-raiz achada e corrigida.**
+   `apps/cli/src/main.ts:183` destacava método da instância
+   (`const tag = theme.dim`) — chamada posterior perdia o `this` →
+   `Cannot read properties of undefined (reading 'paint')`. Corrigido o call
+   site E **blindado o formatador**: todos os métodos do `ThemeManager` agora
+   são arrow-properties **bound à instância** (destacar/passar como callback é
+   seguro para sempre) e a entrada é nil-safe (`undefined`/objeto → string, sem
+   explodir). → 2 testes de regressão em `tui/test/theme.test.ts` (20 passed).
+2. **Gatilho errado de `git_clean`/`git_restore`.** Descrições reescritas com
+   anti-affordance explícita: "APAGA/DESCARTA PERMANENTEMENTE … NUNCA use para
+   listar, explorar ou ler arquivos (use read_file_paginated/search_code/
+   git_status)". A palavra "arquivos da working tree" no texto antigo fazia o
+   Tool Search léxico casar com pedidos de listagem.
+3. **Auditoria de wrapping.** `defineZodTool` já converte toda exceção em
+   `{ success:false, error }`; o hot path do REPL (`repl-engine.ts`) já embrulha
+   `agent.run` em try/catch com mensagem tematizada. O único caminho que escapava
+   era o `auditSink` (fora do try/catch) — exatamente o bug do item 1, corrigido.
+
+### FASE 2 — Motor Semântico (`ast/program.ts` + `ast/semantic.ts`)
+
+- [x] **Ciclo de vida anti-OOM (mandato):** `ts.LanguageService` **lazy +
+      cacheado por workspace** (LRU cap 2, `dispose()` no despejo) em vez de
+      `ts.createProgram` por chamada. Snapshots versionados por **mtime** → o
+      DocumentRegistry do TS reparsa SÓ o que mudou entre chamadas (testado:
+      rename → find_references vê o novo estado no MESMO serviço). File list
+      re-varrida por chamada (arquivos novos entram) reusando o walk do indexer.
+- [x] **Precisão de binding:** alvos resolvidos por símbolo do checker (aliases
+      via `getAliasedSymbol`). Desambiguação inteligente: múltiplas ocorrências
+      só exigem `line` quando são símbolos DISTINTOS; senão erro estruturado
+      lista candidatos (nunca escolha silenciosa).
+- [x] **4 tools (substituem as name-based no registro; exports antigos mantidos
+      por ABI, depreciados):** `find_references` (semântico), `find_callers` /
+      `find_callees` (call hierarchy nativa do TS), `rename_symbol` — **APLICA**
+      multi-arquivo com backup `.bak` por arquivo modificado (mecânica da
+      fundação FS), edits de trás pra frente, `dryRun` opcional, valida o novo
+      identificador.
+      → `test/ast-semantic.test.ts` (11 testes) — inclui a prova exigida:
+      **`A.save` renomeado para `persist` NÃO toca `B.save`** (homônimo), uso
+      `a.save()` atualizado, `new B().save()` intacto, `.bak` só nos arquivos
+      modificados.
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **137 passed / 4 skipped** (15 suítes; +`ast-semantic` 11). ✅
+- `@clover/tui` → **20 passed** (+2 regressão do `.paint`). ✅
+- `build:os` → **exit 0**. Registro: **59 tools** (57 − 2 name-based + 4 semânticas).
+
+---
+
+## Hotfix — Incidente de seleção: `git_clean` para "listar arquivos" — ✅ CORRIGIDO
+
+**Incidente (transcript real do REPL):** "consegue listar os arquivos da area de
+trabalho" → prompt de autorização de `git_clean` (destructive). Usuário aprovou;
+salvou-o só o "not a git repository".
+
+**Causa-raiz (dupla):**
+1. **Não existia tool de listagem** — o Planner não tinha affordance correta; o
+   Tool Search lexical entregou o melhor overlap acidental.
+2. **A correção anterior de descrição PIOROU o caso:** "NUNCA use para listar,
+   explorar … arquivos" contém exatamente os termos da query — anti-instrução
+   vira ISCA para scorer lexical (LLM lê a negação; o scorer não).
+
+**Correção em 3 camadas:**
+1. **`list_files`** (fs/, read) — lista nome/tipo/tamanho, `recursive?` com skip
+   de node_modules/dist/etc, fronteira de workspace. Affordance correta com os
+   termos que usuários realmente digitam ("listar, explorar, ver, navegar, área
+   de trabalho").
+2. **Descrições destrutivas sem palavras-isca:** git_clean/git_restore reescritas
+   sem "listar/explorar/arquivos da/área de trabalho" — aviso mantido em termos
+   que não colidem com queries benignas (untracked, rollback, desfazer).
+3. **Peso por intent no `LexicalToolSearch`:** score × (read 1.0 · write 0.75 ·
+   destructive 0.5) — menor privilégio na SELEÇÃO: destrutiva exige evidência
+   lexical mais forte. Pedidos explícitos de reverter/descartar ainda as acham
+   (testado).
+
+**Regressão bloqueada por teste** (`test/tool-selection.test.ts`, 9 testes, roda
+contra o REGISTRO REAL + scorer REAL): a query EXATA do incidente → `list_files`
+em 1º e nenhuma destrutiva no top-8; variações de exploração → só `read`; e as
+descrições são verificadas contra palavras-isca (não regridem silenciosamente).
+
+**Verificação:** tools **146 passed** (16 suítes), tool-search 4, tui 20, agent 13;
+`build:os` exit 0. Registro: **60 tools**.
+
+---
+
+## Fatia — The OS Explorer: fim do sandbox (agente global) — ✅ CONCLUÍDA
+
+**Mudança de segurança DELIBERADA e AUTORIZADA:** o usuário (controle total da
+máquina) exigiu navegação/leitura globais. Implementado como **quebra do sandbox
+apenas para read/nav**; a trava de MUTAÇÃO (Governor por intent) permanece intacta —
+`write`/`destructive` ainda pedem confirmação, reads passam direto (o RM já era assim).
+
+### 1. Mobilidade (pernas + olhos)
+
+- [x] **`sys/context.ts`** — `session`: cwd de sessão (override global, mutável),
+      guards `findGitRoot`/`findTsProjectRoot` (walk-up real). `session.set` valida
+      existência/tipo e move `process.cwd()`.
+- [x] **3 tools:** `get_current_directory` (cwd + flag roaming), `list_directory`
+      (relativo/absoluto, default = dir atual), `change_working_directory` (move a
+      base; erro estruturado se dir inexistente).
+- [x] **REPL roaming persistente:** `repl-engine` monta o goal com
+      `session.get() ?? workspacePath` — o "andar" do agente sobrevive entre turnos.
+
+### 2. Quebra do sandbox (braços livres)
+
+- [x] **`resolveGlobal(ctx, path?)`** (`sys/fs.ts`): absoluto passa direto, relativo
+      resolve contra `baseDir` (cwd de sessão ou workspace) — **sem fronteira**.
+      `resolveInWorkspace` (com fronteira) sobrevive SÓ para o cache `.clover`.
+- [x] **FS tools globais:** read_file_paginated, write_file, patch_file, list_files
+      migradas para `resolveGlobal` — aceitam caminhos absolutos de qualquer lugar.
+- [x] **`runBinary` default cwd = `baseDir`** — git/build/rg rodam no dir de sessão.
+- [x] **AST sintático global:** analyze_module e cia. leem qualquer arquivo
+      (`readTextGlobal`); single-file, não precisam de projeto.
+
+### 3. Resiliência de contexto (fim da alucinação git/TS)
+
+- [x] **Guard git** em `runGit` (`assertGitRepo`): sem `.git` no cwd/ancestrais →
+      `{ success:false, error:"Not a git repository (...). Use basic FS tools ... instead." }`.
+- [x] **Guard TS** no motor semântico (`resolveTarget`): sem `tsconfig.json` →
+      erro "Not a TS project ... Use basic FS tools instead."
+      (O incidente do transcript — `git_clean` em C:\Users\Admin sem repo — agora dá
+      erro guiado ao invés de rodar.)
+
+### Verificação (executada, win32)
+
+- `@clover/tools` → **153 passed / 4 skipped** (17 suítes; +`fs-global` 7). ✅
+  Inclui: read absoluto fora do workspace, roaming cross-dir, git_status em não-repo
+  → erro guiado. `session.reset()` + restauração de `process.cwd()` isolam os testes.
+- `@clover/tool-search` → **4 passed** (scorer agora filtra stopwords PT/EN +
+  peso por intent — "listar arquivos" seleciona `list_files`, não `git_clean`). ✅
+- `@clover/tui` → 20, `@clover/agent` → 13. `build:os` → **exit 0**. Registro: **63 tools**.
+
+---
+
 ## Backlog técnico (postergado, sem bloqueio)
 
 - **Fatia 9 — Sandbox nativo:** Tier 1 `isolated-vm`, Tier 2 WASM (limites finos de

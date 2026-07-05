@@ -18,6 +18,8 @@
 import type { ToolInvocation } from '@clover/contracts';
 import { ProcessSandbox, type SandboxBackend } from '@clover/sandbox';
 
+import { baseDir } from './fs.js';
+
 /** 1 MiB — mesmo default do Sandbox; suba para saídas grandes (diff/log). */
 const DEFAULT_MAX_BUFFER = 1024 * 1024;
 
@@ -57,7 +59,8 @@ const sharedSandbox = new ProcessSandbox();
 export async function runBinary(opts: RunBinaryOptions): Promise<RunBinaryResult> {
   const sandbox = opts.sandbox ?? sharedSandbox;
   const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
-  const cwd = opts.cwd ?? opts.ctx.workspacePath;
+  // Default = cwd de sessão (roaming global), senão o workspace da invocação.
+  const cwd = opts.cwd ?? baseDir(opts.ctx);
 
   const res = await sandbox.run({
     argv: [opts.bin, ...opts.args],

@@ -161,7 +161,7 @@ describe('agent structural retrieval (AST/KG -> context -> planner)', () => {
     return new KnowledgeRetriever(index, buildGraphFromIndex(index));
   }
 
-  function build(budgetTokens: number) {
+  function build(budgetTokens: number, opts?: { systemPrompt?: string }) {
     const captured: string[] = [];
     const provider = new MockProvider((req) => {
       captured.push(req.prompt);
@@ -184,6 +184,7 @@ describe('agent structural retrieval (AST/KG -> context -> planner)', () => {
       knowledge: { retriever: indexedRetriever(), maxSnippets: 5 },
       budget: { maxTokens: budgetTokens },
       maxTools: 4,
+      systemPrompt: opts?.systemPrompt,
     });
     return { agent, captured };
   }
@@ -203,13 +204,20 @@ describe('agent structural retrieval (AST/KG -> context -> planner)', () => {
   });
 
   it('respects the token budget: a tight budget drops the heavier structural context', async () => {
-    // Orçamento que cabe consulta + tool, mas NÃO o snippet estrutural (mais pesado).
-    const { agent, captured } = build(22);
+    // Suprime system prompt para usar orçamento apertado real no snippet estrutural.
+    const { agent, captured } = build(30, { systemPrompt: '' });
     const goal: Goal = { id: 'g2', text: 'describe AuthService login', workspacePath: '/tmp' };
     const run = await agent.run(goal);
 
     expect(run.result.status).toBe('done'); // tool coube → plano válido
-    expect(run.context.selectedMemory).toEqual([]); // estrutura não coube
-    expect(captured[0]).not.toContain('Contexto do código');
+    // Orçamento apertado: o snippet pesado (class AuthService com members) é
+    // descartado, mas o leve (method login) ainda cabe.
+    expect(run.context.selectedMemory).toHaveLength(1);
+    // O contexto leve (login) entra no prompt...
+    expect(captured[0]).toContain('Contexto do código');
+    expect(captured[0]).toContain('login');
+    // ...mas o pesado (definição da class com members) não.
+    expect(captured[0]).not.toContain('members:');
+    expect(captured[0]).not.toContain('class AuthService');
   });
 });

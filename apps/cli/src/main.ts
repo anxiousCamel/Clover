@@ -16,7 +16,7 @@ import { ContextBuilder } from '@clover/context-builder';
 import type { CapabilityToken, Goal } from '@clover/contracts';
 import { createI18n, LANGUAGES, type Lang } from '@clover/i18n';
 import { createKernel, demoTools } from '@clover/kernel';
-import { cloverTools } from '@clover/tools';
+import { cloverTools, setCatalog } from '@clover/tools';
 import type { LlmProvider, StructuredRequest } from '@clover/llm';
 import { OllamaProvider, OpenAiCompatibleAdapter } from '@clover/llm';
 import { Planner } from '@clover/planner';
@@ -180,8 +180,10 @@ async function cmdRepl(): Promise<void> {
   // config (o usuário troca via /mode ou /config sem reconstruir o kernel).
   const auditSink: AuditSink = (e) => {
     blackboard.post({ topic: 'audit', author: 'governor', payload: e });
-    const tag = e.decision === 'allowed' ? theme.dim : theme.warn;
-    render(tag(`[audit] ${e.tool} (${e.intent}) → ${e.decision}${e.reason ? ` — ${e.reason}` : ''}`));
+    // Método NÃO destacado da instância (destacar perdia o `this` → crash
+    // "Cannot read properties of undefined (reading 'paint')").
+    const line = `[audit] ${e.tool} (${e.intent}) → ${e.decision}${e.reason ? ` — ${e.reason}` : ''}`;
+    render(e.decision === 'allowed' ? theme.dim(line) : theme.warn(line));
   };
   const approvalPrompt: ApprovalPrompt = (ctx: AuthContext) =>
     withSpinnerSuspended(async () => {
@@ -202,6 +204,8 @@ async function cmdRepl(): Promise<void> {
     authorize: (req) => activeGovernor().authorize({ ...req }),
     guard: (fn) => activeGovernor().guard(fn),
   });
+  // Popula o catálogo da tool list_available_tools com os descritores reais.
+  setCatalog(kernel.listTools());
   const scheduler = new DurableScheduler(kernel, new EventStore({ filePath: join(ROOT, '.clover', 'journal.jsonl') }));
   const models = new ModelRegistry(loadModels(), config.getValue('defaultModel'));
   const usage = new UsageCounter();

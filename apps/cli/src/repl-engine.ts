@@ -14,6 +14,7 @@ import type { Goal } from '@clover/contracts';
 import type { I18n } from '@clover/i18n';
 import type { Kernel } from '@clover/kernel';
 import { ChoicePrompt, ThemeManager, UsageCounter, parseSlash, processInput, type SlashCommand } from '@clover/tui';
+import { session } from '@clover/tools';
 
 export class ModelRegistry {
   private models: string[];
@@ -180,7 +181,10 @@ export class ReplEngine {
         .join(' ');
       io.render(theme.dim(this.t('task.attachments', { tags })));
     }
-    const goal: Goal = { id: `goal-${++goalSeq}`, text: clean, workspacePath };
+    // The OS Explorer: se o agente "caminhou" (change_working_directory), o cwd
+    // de sessão vira a base do próximo goal — o roaming persiste entre turnos.
+    const effectiveWorkspace = session.get() ?? workspacePath;
+    const goal: Goal = { id: `goal-${++goalSeq}`, text: clean, workspacePath: effectiveWorkspace };
     try {
       const run = await agent.run(goal);
       if (run.result.status === 'done') {
