@@ -15,6 +15,8 @@ import type { I18n } from '@clover/i18n';
 import type { Kernel } from '@clover/kernel';
 import { ChoicePrompt, ThemeManager, UsageCounter, parseSlash, processInput, type SlashCommand } from '@clover/tui';
 import { session } from '@clover/tools';
+import type { ChatHistory } from './chat-history.js';
+import type { ToolAgentHistory, ToolCallingAgent } from './tool-agent.js';
 
 export class ModelRegistry {
   private models: string[];
@@ -49,6 +51,10 @@ export interface AgentRunner {
   run(goal: Goal): Promise<AgentRunResult>;
 }
 
+export interface ChatProvider {
+  complete(req: { system?: string; prompt: string }): Promise<string>;
+}
+
 export interface ReplDeps {
   theme: ThemeManager;
   i18n: I18n;
@@ -60,6 +66,12 @@ export interface ReplDeps {
   models: ModelRegistry;
   usage: UsageCounter;
   workspacePath: string;
+  chatHistory?: ChatHistory;
+  sessionId?: string;
+  /** Direct LLM access for conversational responses — bypasses Planner entirely. */
+  chatProvider?: ChatProvider;
+  /** ReAct tool-calling agent — bypasses Plan IR, uses native function calling. */
+  toolAgent?: ToolCallingAgent;
 }
 
 export interface HandleResult {
@@ -78,8 +90,42 @@ export function buildExecConfirmation(command: string, i18n?: I18n): ChoicePromp
 
 let goalSeq = 0;
 
+/** Hot window: kept verbatim, last N turns this session. */
+const HOT_TURNS = 10;
+/** Warm window: older turns this session, compressed. */
+const WARM_TURNS = 20;
+/** Cross-session turns loaded from disk on startup. */
+const COLD_TURNS = 30;
+/** Max chars for hot turn assistant output. */
+const HOT_ASSISTANT_CHARS = 600;
+/** Max chars for warm/cold turn assistant output (compressed). */
+const COLD_ASSISTANT_CHARS = 120;
+
+interface ConversationTurn {
+  user: string;
+  assistant: string;
+}
+
 export class ReplEngine {
-  constructor(private readonly d: ReplDeps) {}
+  private history: ConversationTurn[] = [];
+  private coldHistory: ConversationTurn[] = [];
+
+  constructor(private readonly d: ReplDeps) {
+    if (d.chatHistory) {
+      // Cross-session cold memory: recent turns from OTHER sessions.
+      this.coldHistory = d.chatHistory
+        .loadRecent(COLD_TURNS + HOT_TURNS + WARM_TURNS)
+        .filter((t) => t.sessionId !== d.sessionId)
+        .slice(-COLD_TURNS)
+        .map((t) => ({ user: t.user, assistant: t.assistant }));
+    }
+  }
+
+  /** Pre-load turns (e.g. from --resume) into hot history before the first turn. */
+  loadTurns(turns: ConversationTurn[]): void {
+    const recent = turns.slice(-(HOT_TURNS + WARM_TURNS));
+    this.history = recent.map((t) => ({ user: t.user, assistant: t.assistant }));
+  }
 
   private t(key: string, vars?: Record<string, string | number>): string {
     return this.d.i18n.t(key, vars);
@@ -117,6 +163,8 @@ export class ReplEngine {
       case 'status':
         io.render(this.statusText());
         return {};
+      case 'sessions':
+        return this.handleSessions();
       default:
         io.render(theme.warn(this.t('repl.unknown', { name: cmd.name })));
         return {};
@@ -142,6 +190,22 @@ export class ReplEngine {
         ? theme.success(`${theme.symbols.ok} ${this.t('model.switched', { name: args[0] })}`)
         : theme.error(`${theme.symbols.fail} ${this.t('model.notFound', { name: args[0] })}`),
     );
+    return {};
+  }
+
+  private handleSessions(): HandleResult {
+    const { theme, io } = this.d;
+    const sessions = this.d.chatHistory?.listSessions() ?? [];
+    if (sessions.length === 0) {
+      io.render(theme.dim('Nenhuma sessão salva. Use clover normalmente para começar.'));
+      return {};
+    }
+    const lines = [theme.heading('Sessões anteriores (use clover --resume para retomar a última):')];
+    for (const s of sessions.slice(0, 10)) {
+      const date = new Date(s.ts).toLocaleString('pt-BR');
+      lines.push(`  ${theme.dim(s.sessionId.slice(0, 8))}  ${theme.accent(date)}  ${s.turns} turno(s)  "${s.firstMessage}"`);
+    }
+    io.render(lines.join('\n'));
     return {};
   }
 
@@ -181,14 +245,55 @@ export class ReplEngine {
         .join(' ');
       io.render(theme.dim(this.t('task.attachments', { tags })));
     }
-    // The OS Explorer: se o agente "caminhou" (change_working_directory), o cwd
-    // de sessão vira a base do próximo goal — o roaming persiste entre turnos.
+
+    // Tool path: native function calling (ToolCallingAgent) or Plan IR fallback.
+    // toolAgent handles both chat and tool queries — model decides which to use.
+    if (this.d.toolAgent?.supportsTools) {
+      const history: ToolAgentHistory[] = this.history.map((t) => ({ user: t.user, assistant: t.assistant }));
+      try {
+        const response = await this.d.toolAgent.run(clean, history);
+        io.render(`${theme.statusIcon('ok')} ${response}`);
+        const turn: ConversationTurn = { user: clean, assistant: response.slice(0, 400) };
+        this.history.push(turn);
+        if (this.history.length > HOT_TURNS + WARM_TURNS) this.history.shift();
+        this.d.chatHistory?.append({ sessionId: this.d.sessionId ?? '', user: clean, assistant: response.slice(0, 400) });
+      } catch (err) {
+        io.render(theme.error(`${theme.symbols.fail} ${err instanceof Error ? err.message : String(err)}`));
+      }
+      return {};
+    }
+
+    // Fallback: chatProvider for pure text, then Plan IR.
+    if (this.d.chatProvider) {
+      const prompt = this.buildGoalWithHistory(clean);
+      try {
+        const response = await this.d.chatProvider.complete({ system: CHAT_SYSTEM, prompt });
+        const reply = response.trim() || '(sem resposta)';
+        io.render(`${theme.statusIcon('ok')} ${reply}`);
+        const turn: ConversationTurn = { user: clean, assistant: reply.slice(0, 400) };
+        this.history.push(turn);
+        if (this.history.length > HOT_TURNS + WARM_TURNS) this.history.shift();
+        this.d.chatHistory?.append({ sessionId: this.d.sessionId ?? '', user: clean, assistant: reply.slice(0, 400) });
+      } catch (err) {
+        io.render(theme.error(`${theme.symbols.fail} ${err instanceof Error ? err.message : String(err)}`));
+      }
+      return {};
+    }
+
+    // Last resort: Plan IR (legacy path).
     const effectiveWorkspace = session.get() ?? workspacePath;
-    const goal: Goal = { id: `goal-${++goalSeq}`, text: clean, workspacePath: effectiveWorkspace };
+    const goalText = this.buildGoalWithHistory(clean);
+    const goal: Goal = { id: `goal-${++goalSeq}`, text: goalText, workspacePath: effectiveWorkspace };
     try {
       const run = await agent.run(goal);
       if (run.result.status === 'done') {
-        io.render(`${theme.statusIcon('ok')} ${formatOutputs(run.result.outputs)}`);
+        const formatted = formatOutputs(run.result.outputs);
+        io.render(`${theme.statusIcon('ok')} ${formatted}`);
+        const historyEntry = buildHistoryEntry(run.result.outputs);
+        const turn: ConversationTurn = { user: clean, assistant: historyEntry };
+        this.history.push(turn);
+        if (this.history.length > HOT_TURNS + WARM_TURNS) this.history.shift();
+        this.d.chatHistory?.append({ sessionId: this.d.sessionId ?? '', user: clean, assistant: historyEntry });
       } else {
         this.notifyFailure(run.result.fault?.message ?? 'unknown', false, run.taskId, goal.text);
       }
@@ -196,6 +301,37 @@ export class ReplEngine {
       this.notifyFailure(err instanceof Error ? err.message : String(err), true, undefined, goal.text);
     }
     return {};
+  }
+
+  private buildGoalWithHistory(currentMessage: string): string {
+    const allTurns = [...this.coldHistory, ...this.history];
+    if (allTurns.length === 0) return currentMessage;
+
+    const total = allTurns.length;
+    // Hot: last HOT_TURNS turns — verbatim assistant output (longer)
+    // Warm/cold: older turns — compressed
+    const hotStart = Math.max(0, total - HOT_TURNS);
+
+    const lines: string[] = [];
+    for (let i = 0; i < total; i++) {
+      const t = allTurns[i];
+      const isHot = i >= hotStart;
+      const limit = isHot ? HOT_ASSISTANT_CHARS : COLD_ASSISTANT_CHARS;
+      const assistant = t.assistant.length > limit ? t.assistant.slice(0, limit) + '…' : t.assistant;
+      lines.push(`Usuário: ${t.user}\nAssistente: ${assistant}`);
+    }
+
+    const sections: string[] = [];
+    if (this.coldHistory.length > 0) {
+      const cold = lines.slice(0, this.coldHistory.length).join('\n\n');
+      sections.push(`[SESSÕES ANTERIORES]\n${cold}`);
+    }
+    if (this.history.length > 0) {
+      const hot = lines.slice(this.coldHistory.length).join('\n\n');
+      sections.push(`[CONVERSA ATUAL]\n${hot}`);
+    }
+    sections.push(`[NOVA MENSAGEM]\n${currentMessage}`);
+    return sections.join('\n\n');
   }
 
   /**
@@ -233,7 +369,115 @@ export class ReplEngine {
   }
 }
 
+const CHAT_SYSTEM = [
+  'Você é o CloverOS, um assistente pessoal inteligente e amigável.',
+  'Responda em português de forma concisa, direta e natural.',
+  'Quando houver histórico de conversa, use-o para dar contexto às respostas.',
+  'Não liste arquivos nem execute ações — apenas responda com texto.',
+].join('\n');
+
+/**
+ * Returns true if the message explicitly requests a file/tool action.
+ * Conservative: only clear action verbs trigger the Planner path.
+ */
+function needsTools(text: string): boolean {
+  return /\b(lista[rl]?|liste|listar|listagem|abri[r]?|abre|l[eê]\b|leia|ler\b|cria[r]?|crie|delet[ae]|apag[ae]|mov[ae]|mover|copi[ae]|copiar|execut[ae]|executar|rod[ae]|rodar|renomei?a[r]?|pesquisar|busca[r]?)\b/i.test(text);
+}
+
+/**
+ * Builds a compact history annotation from raw plan outputs.
+ * Works on structured data before rendering — no emoji/regex hacks.
+ * Conversational responses (respond.message) are kept verbatim (≤400 chars).
+ * Structured results (file listings, file reads) become compact labels so
+ * the LLM knows what happened without being triggered to repeat the action.
+ */
+function buildHistoryEntry(outputs: unknown[]): string {
+  if (!outputs || outputs.length === 0) return '(sem resultado)';
+  const first = outputs[0];
+
+  if (Array.isArray(first)) {
+    if (first.every(isDirEntry)) return `[listagem: ${first.length} item(s)]`;
+    return `[lista: ${first.length} item(s)]`;
+  }
+
+  if (typeof first === 'object' && first !== null) {
+    const obj = first as Record<string, unknown>;
+    if (Array.isArray(obj['entries'])) return `[listagem: ${(obj['entries'] as unknown[]).length} item(s)]`;
+    if (typeof obj['content'] === 'string') return `[arquivo lido: ${Math.ceil(obj['content'].length / 1024)} KB]`;
+    if (typeof obj['message'] === 'string') return obj['message'].slice(0, 400);
+    if (typeof obj['output'] === 'object' && obj['output'] !== null) return buildHistoryEntry([obj['output']]);
+  }
+
+  if (typeof first === 'string') return first.slice(0, 400);
+
+  return '(resultado)';
+}
+
 function formatOutputs(outputs: unknown[]): string {
   if (!outputs || outputs.length === 0) return '(...)';
-  return outputs.map((o) => (typeof o === 'string' ? o : JSON.stringify(o))).join('\n');
+  return outputs.map(formatSingleOutput).filter(Boolean).join('\n') || '(...)';
+}
+
+function formatDirEntries(entries: Array<{ name?: string; type?: string; size?: number }>): string {
+  if (entries.length === 0) return '(diretório vazio)';
+  return entries
+    .map((e) => {
+      const icon = e.type === 'dir' ? '📁' : '📄';
+      const size = e.type === 'file' && (e.size ?? 0) > 0 ? ` (${Math.round((e.size ?? 0) / 1024)} KB)` : '';
+      return `${icon} ${e.name ?? '?'}${size}`;
+    })
+    .join('\n');
+}
+
+function isDirEntry(x: unknown): x is { name?: string; type?: string; size?: number } {
+  return typeof x === 'object' && x !== null && ('name' in x || 'type' in x);
+}
+
+const TEMPLATE_GARBAGE = /\{\{.*?\}\}/s;
+const OBJECT_GARBAGE = /^\[object Object\]/;
+
+function formatSingleOutput(o: unknown): string {
+  if (o === null || o === undefined) return '';
+  if (typeof o === 'string') {
+    if (TEMPLATE_GARBAGE.test(o)) return '';
+    // respond tool received non-string (array) and String() was called → try JSON parse
+    if (OBJECT_GARBAGE.test(o)) return '(dados não formatados — tente reformular a pergunta)';
+    // Might be JSON-stringified entries array from respond fix
+    if (o.startsWith('[') || o.startsWith('{')) {
+      try {
+        const parsed: unknown = JSON.parse(o);
+        return formatSingleOutput(parsed);
+      } catch {
+        // not JSON, return as-is
+      }
+    }
+    return o;
+  }
+  if (typeof o !== 'object') return String(o);
+
+  // Raw array — may be entries returned directly via path:'entries'
+  if (Array.isArray(o)) {
+    if (o.length === 0) return '(diretório vazio)';
+    if (o.every(isDirEntry)) return formatDirEntries(o as Array<{ name?: string; type?: string; size?: number }>);
+    return o.map((item) => formatSingleOutput(item)).join('\n');
+  }
+
+  const obj = o as Record<string, unknown>;
+
+  // respond / message output
+  if (typeof obj['message'] === 'string') return obj['message'];
+
+  // list_files / list_directory output object
+  if (Array.isArray(obj['entries'])) {
+    return formatDirEntries(obj['entries'] as Array<{ name?: string; type?: string; size?: number }>);
+  }
+
+  // read_file output
+  if (typeof obj['content'] === 'string') return obj['content'];
+
+  // generic success output
+  if (typeof obj['output'] === 'string') return obj['output'];
+  if (obj['output'] !== null && obj['output'] !== undefined) return formatSingleOutput(obj['output']);
+
+  return JSON.stringify(o, null, 2);
 }

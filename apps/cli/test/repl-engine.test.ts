@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Blackboard } from '@clover/blackboard';
 import type { ConfigStore } from '@clover/config';
 import { createI18n } from '@clover/i18n';
+import type { Kernel } from '@clover/kernel';
 import { ThemeManager, UsageCounter } from '@clover/tui';
 
 import { ModelRegistry, ReplEngine, buildExecConfirmation, type AgentRunner } from '../src/repl-engine.js';
+import type { ToolCallingAgent } from '../src/tool-agent.js';
 
 const theme = new ThemeManager({ color: false, unicode: false });
 
@@ -38,6 +40,7 @@ function harness(agentRun: AgentRunner['run'], opts: { mode?: 'step' | 'auto'; l
     models,
     usage: new UsageCounter(),
     workspacePath: '/tmp',
+    sessionId: 'test-session',
   });
   return { engine, out, models, bb, cfgState };
 }
@@ -181,5 +184,107 @@ describe('ModelRegistry & exec confirmation', () => {
     const prompt = buildExecConfirmation('rm -rf build');
     expect(prompt.question).toContain('rm -rf build');
     expect(prompt.choices.map((c) => c.value)).toEqual(['once', 'always', 'cancel']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Routing: toolAgent > chatProvider > Plan IR
+// ---------------------------------------------------------------------------
+
+function makeRoutingEngine(opts: {
+  agentRun?: AgentRunner['run'];
+  toolAgent?: Partial<ToolCallingAgent>;
+  chatComplete?: (req: { system?: string; prompt: string }) => Promise<string>;
+}) {
+  const out: string[] = [];
+  const io = { render: (s: string) => out.push(s), clear: () => {} };
+  const bb = new Blackboard();
+  const cfgState: Record<string, unknown> = { language: 'pt-BR', mode: 'step', activeProvider: 'ollama' };
+  const config = {
+    getValue: (k: string) => cfgState[k],
+    set: (k: string, v: unknown) => { cfgState[k] = v; },
+  } as unknown as Pick<ConfigStore, 'getValue' | 'set'>;
+
+  const agentRun: AgentRunner['run'] = opts.agentRun ?? (async (goal) => ({
+    goal,
+    context: { messages: [], tools: [], tokensUsed: 0, provenance: [], selectedMemory: [], dropped: 0 },
+    taskId: 't1',
+    result: { taskId: 't1', status: 'done', outputs: ['plan-ir-response'], nodeOutputs: {} } as never,
+  }));
+
+  const engine = new ReplEngine({
+    theme,
+    i18n: createI18n('pt-BR'),
+    io,
+    agent: { run: agentRun },
+    kernel: { listTools: () => [] } as unknown as Pick<Kernel, 'listTools'>,
+    blackboard: bb,
+    config,
+    models: new ModelRegistry(['m'], 'm'),
+    usage: new UsageCounter(),
+    workspacePath: '/tmp',
+    sessionId: 'routing-test',
+    ...(opts.toolAgent ? { toolAgent: opts.toolAgent as unknown as ToolCallingAgent } : {}),
+    ...(opts.chatComplete ? { chatProvider: { complete: opts.chatComplete } } : {}),
+  });
+
+  return { engine, out };
+}
+
+describe('ReplEngine routing', () => {
+  it('uses toolAgent when supportsTools=true — Plan IR never called', async () => {
+    const planIrCalls: string[] = [];
+    const toolAgentCalls: string[] = [];
+
+    const { engine, out } = makeRoutingEngine({
+      agentRun: async (goal) => { planIrCalls.push(goal.text); return {} as never; },
+      toolAgent: {
+        supportsTools: true,
+        run: async (text: string) => { toolAgentCalls.push(text); return 'resposta do toolAgent'; },
+      },
+    });
+
+    await engine.handleLine('lista os arquivos');
+
+    expect(toolAgentCalls).toHaveLength(1);
+    expect(planIrCalls).toHaveLength(0);
+    expect(out.join('\n')).toContain('resposta do toolAgent');
+  });
+
+  it('uses chatProvider when no toolAgent', async () => {
+    const chatCalls: string[] = [];
+    const planIrCalls: string[] = [];
+
+    const { engine, out } = makeRoutingEngine({
+      agentRun: async (goal) => { planIrCalls.push(goal.text); return {} as never; },
+      chatComplete: async (req) => { chatCalls.push(req.prompt); return 'resposta do chat'; },
+    });
+
+    await engine.handleLine('oi tudo bem?');
+
+    expect(chatCalls).toHaveLength(1);
+    expect(planIrCalls).toHaveLength(0);
+    expect(out.join('\n')).toContain('resposta do chat');
+  });
+
+  it('falls back to Plan IR when no toolAgent and no chatProvider', async () => {
+    const planIrCalls: string[] = [];
+
+    const { engine, out } = makeRoutingEngine({
+      agentRun: async (goal) => {
+        planIrCalls.push(goal.text);
+        return {
+          goal,
+          context: { messages: [], tools: [], tokensUsed: 0, provenance: [], selectedMemory: [], dropped: 0 },
+          taskId: 't1',
+          result: { taskId: 't1', status: 'done', outputs: ['plano executado'], nodeOutputs: {} } as never,
+        };
+      },
+    });
+
+    await engine.handleLine('tarefa qualquer');
+
+    expect(planIrCalls).toHaveLength(1);
+    expect(out.join('\n')).toContain('plano executado');
   });
 });

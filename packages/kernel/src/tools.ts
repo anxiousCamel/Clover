@@ -61,7 +61,31 @@ export const respondTool: LocalTool = defineTool(
     capabilities: [],
     pure: true,
   },
-  (args) => ({ success: true, output: { message: String(args.message ?? '') } }),
+  (args) => {
+    const msg = args.message;
+    let text: string;
+    if (typeof msg === 'string') {
+      text = msg;
+    } else if (Array.isArray(msg)) {
+      const isDirEntries = msg.every((e) => typeof e === 'object' && e !== null && ('name' in e || 'type' in e));
+      if (isDirEntries) {
+        text = (msg as Array<{ name?: string; type?: string; size?: number }>)
+          .map((e) => {
+            const icon = e.type === 'dir' ? '📁' : '📄';
+            const size = e.type === 'file' && (e.size ?? 0) > 0 ? ` (${Math.round((e.size ?? 0) / 1024)} KB)` : '';
+            return `${icon} ${e.name ?? '?'}${size}`;
+          })
+          .join('\n');
+      } else {
+        text = JSON.stringify(msg, null, 2);
+      }
+    } else if (msg !== null && msg !== undefined && typeof msg === 'object') {
+      text = JSON.stringify(msg, null, 2);
+    } else {
+      text = String(msg ?? '');
+    }
+    return { success: true, output: { message: text } };
+  },
 );
 
 /** Conjunto de tools base do CloverOS REPL. */

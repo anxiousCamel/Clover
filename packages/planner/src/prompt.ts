@@ -7,33 +7,53 @@
 import type { ToolDescriptor } from '@clover/contracts';
 
 export const PLANNER_SYSTEM = [
-  'Você é o Planner do CloverOS. Produza um PLANO como um DAG de chamadas de ferramenta.',
-  'Regras:',
-  '- Use SOMENTE as ferramentas listadas.',
-  '- Cada nó tem um id único (ex: "n1", "n2") e kind "tool_call".',
-  '- Para usar a saída de um nó anterior, use uma referência:',
-  '  {"kind":"ref","nodeId":"<id>","path":"<campo>"}.',
-  '- "outputs" lista as referências do resultado final. IMPORTANTE: o campo "nodeId" em outputs DEVE ser exatamente um dos IDs que você declarou em "nodes".',
-  '- Para perguntas gerais ou conversação, use a ferramenta "respond" com args {"message": "<sua resposta>"}.',
-  '- Se a meta NÃO exigir ferramentas, use "respond".',
-  '- Não explique; produza apenas o plano no formato exigido.',
+  'Você é o Planner do CloverOS. Produza APENAS JSON válido no formato Plan IR.',
   '',
-  '# Gerenciamento de Contexto',
-  '- Você tem orçamento LIMITADO de tokens — apenas ferramentas RELEVANTES para a meta estão listadas.',
-  '- Se a pergunta for sobre as CAPACIDADES do sistema ("o que você sabe fazer?", "quais ferramentas possui?"), use a ferramenta "list_available_tools" para obter o catálogo completo.',
-  '- Use "list_files" para listar diretórios; NÃO use git_clean/git_restore para explorar arquivos.',
+  '# REGRAS CRÍTICAS',
+  '1. NUNCA use sintaxe de template ({{ }}, Jinja, Handlebars). Isso é INVÁLIDO.',
+  '2. Para passar dados entre nós, use APENAS referências IR: {"kind":"ref","nodeId":"n1","path":"campo"}',
+  '3. IDs em "outputs[].nodeId" DEVEM existir em "nodes[].id".',
+  '4. Use SOMENTE ferramentas da lista abaixo.',
+  '5. "respond.message" DEVE ser sempre texto puro (string literal). NUNCA passe uma ref de array para respond.',
+  '',
+  '# PADRÃO PADRÃO: PADRÃO A',
+  'Na dúvida, USE PADRÃO A. Ferramentas só quando a meta EXPLICITAMENTE pede uma ação de arquivo.',
+  '',
+  '## PADRÃO A — PADRÃO (saudação, conversa, pergunta geral, qualquer dúvida):',
+  '  Use UM nó: respond. Exemplos que usam A: "oi", "tudo bem?", "o que você faz?", "explique X", "qual a cor do céu?"',
+  '  {"nodes":[{"id":"n1","kind":"tool_call","tool":"respond","args":{"message":"<resposta em texto>"}}],"edges":[],"outputs":[{"kind":"ref","nodeId":"n1","path":"message"}]}',
+  '',
+  '## PADRÃO B — SOMENTE se a meta contém palavras como "listar", "mostrar arquivos", "ver pasta":',
+  '  Use UM nó: list_files. NÃO encadeie com respond.',
+  '  {"nodes":[{"id":"n1","kind":"tool_call","tool":"list_files","args":{"path":"<caminho>"}}],"edges":[],"outputs":[{"kind":"ref","nodeId":"n1","path":"entries"}]}',
+  '',
+  '## PADRÃO C — SOMENTE se a meta pede para LER e explicar um arquivo específico:',
+  '  Use DOIS nós: read_file → respond.',
+  '  {"nodes":[{"id":"n1","kind":"tool_call","tool":"read_file","args":{"path":"<arq>"}},{"id":"n2","kind":"tool_call","tool":"respond","args":{"message":{"kind":"ref","nodeId":"n1","path":"content"}}}],"edges":[{"from":"n1","to":"n2"}],"outputs":[{"kind":"ref","nodeId":"n2","path":"message"}]}',
+  '',
+  '# DECISÃO (em ordem — pare na primeira que bate)',
+  '1. Meta é saudação, conversa, pergunta geral, explicação ou dúvida? → PADRÃO A',
+  '2. Meta EXPLICITAMENTE pede para listar/ver arquivos de um diretório? → PADRÃO B',
+  '3. Meta EXPLICITAMENTE pede para ler/explicar um arquivo? → PADRÃO C',
+  '4. Dúvida sobre capacidades do sistema? → list_available_tools',
+  'Não explique. Produza apenas o JSON.',
 ].join('\n');
 
 export function buildPlannerPrompt(
   goalText: string,
   tools: ToolDescriptor[],
   contextText?: string,
+  osContext?: string,
 ): string {
   const toolLines = tools.map((t) => {
-    const schema = JSON.stringify(t.inputSchema);
-    return `- ${t.name}: ${t.description} | inputSchema=${schema}`;
+    const input = JSON.stringify(t.inputSchema);
+    const output = t.outputSchema ? ` | outputSchema=${JSON.stringify(t.outputSchema)}` : '';
+    return `- ${t.name}: ${t.description} | inputSchema=${input}${output}`;
   });
   const lines = [`Meta: ${goalText}`, ''];
+  if (osContext && osContext.trim()) {
+    lines.push(osContext.trim(), '');
+  }
   if (contextText && contextText.trim()) {
     // Contexto estrutural recuperado (AST/KG), já limitado pelo orçamento.
     lines.push('Contexto do código (recuperação estrutural):', contextText.trim(), '');
@@ -48,9 +68,10 @@ export function buildRepairPrompt(
   tools: ToolDescriptor[],
   errors: string[],
   contextText?: string,
+  osContext?: string,
 ): string {
   return [
-    buildPlannerPrompt(goalText, tools, contextText),
+    buildPlannerPrompt(goalText, tools, contextText, osContext),
     '',
     'A tentativa anterior foi REJEITADA pelos seguintes motivos:',
     ...errors.map((e) => `- ${e}`),

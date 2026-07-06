@@ -8,8 +8,10 @@
  * (`resolveInWorkspace`) sobrevive só para o cache `.clover`.
  */
 
+import { spawn } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 
 import type { CapabilityRequest, ToolInvocation } from '@clover/contracts';
 import type { LocalTool } from '@clover/tool-abi';
@@ -308,6 +310,49 @@ export const changeWorkingDirectoryTool: LocalTool = defineZodTool({
   },
 });
 
+// ===========================================================================
+// open_file — abre no app padrão do OS
+// ===========================================================================
+
+export const openFileTool: LocalTool = defineZodTool({
+  name: 'open_file',
+  description:
+    'Abre um arquivo ou pasta no aplicativo padrão do sistema operacional. ' +
+    'Funciona com QUALQUER tipo: .pcap/.pcapng (Wireshark), .pdf, .xlsx, .zip, .exe, .dll, pastas (Explorer), imagens, vídeos, etc. ' +
+    'O OS escolhe o app — não requer saber qual programa usar.',
+  input: z
+    .object({
+      path: z.string().min(1).describe('Caminho do arquivo ou pasta — relativo ao dir atual ou ABSOLUTO.'),
+    })
+    .strict(),
+  output: z.object({
+    path: z.string(),
+    opened: z.boolean(),
+  }),
+  capabilities: FS_READ,
+  intent: 'read',
+  pure: false,
+  run: (args, ctx) => {
+    const abs = resolveGlobal(ctx, args.path);
+    try {
+      statSync(abs);
+    } catch {
+      throw new Error(`open_file: '${args.path}' não encontrado`);
+    }
+    let child;
+    if (process.platform === 'win32') {
+      // start "" "<path>" — aspas vazias = título vazio; evita engolir o path
+      child = spawn('cmd', ['/c', 'start', '', abs], { detached: true, stdio: 'ignore', shell: false });
+    } else if (process.platform === 'darwin') {
+      child = spawn('open', [abs], { detached: true, stdio: 'ignore' });
+    } else {
+      child = spawn('xdg-open', [abs], { detached: true, stdio: 'ignore' });
+    }
+    child.unref(); // não bloqueia o processo Node
+    return { path: abs, opened: true };
+  },
+});
+
 /** Todas as tools do namespace fs/. */
 export const fsTools: LocalTool[] = [
   readFilePaginatedTool,
@@ -317,4 +362,5 @@ export const fsTools: LocalTool[] = [
   listDirectoryTool,
   getCurrentDirectoryTool,
   changeWorkingDirectoryTool,
+  openFileTool,
 ];

@@ -5,9 +5,12 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
+
+import { ChatHistory } from './chat-history.js';
 
 import { Agent } from '@clover/agent';
 import { Blackboard } from '@clover/blackboard';
@@ -34,6 +37,7 @@ import { LexicalToolSearch } from '@clover/tool-search';
 import { ChoicePrompt, StatusBoard, UsageCounter, createTheme, phaseLabel } from '@clover/tui';
 
 import { ModelRegistry, ReplEngine, buildExecConfirmation } from './repl-engine.js';
+import { ToolCallingAgent } from './tool-agent.js';
 import { installResilience } from './resilience.js';
 import { renderSteps, runSetup, type SetupProbes } from './setup.js';
 import { clearScreen, createLineReader, promptChoice, promptSecret, render, withSpinner, withSpinnerSuspended } from './terminal.js';
@@ -163,7 +167,7 @@ function cmdHelp(): void {
   );
 }
 
-async function cmdRepl(): Promise<void> {
+async function cmdRepl(opts: { resume?: boolean; sessionId?: string } = {}): Promise<void> {
   const theme = createTheme();
   const config = new ConfigStore();
   const i18n = createI18n(config.getValue('language'));
@@ -226,6 +230,30 @@ async function cmdRepl(): Promise<void> {
       }
       return new OllamaProvider({ host: pc.baseURL ?? OLLAMA_HOST, model: pc.model ?? models.current }).completeStructured(req);
     },
+    complete: (req) => {
+      const pc = config.activeProviderConfig();
+      if (pc.kind === 'openai-compatible' && pc.baseURL) {
+        return new OpenAiCompatibleAdapter({
+          baseURL: pc.baseURL,
+          apiKey: pc.apiKey,
+          model: pc.model ?? models.current,
+          supportsStructuredOutputs: pc.supportsStructuredOutputs,
+        }).complete!(req);
+      }
+      return new OllamaProvider({ host: pc.baseURL ?? OLLAMA_HOST, model: pc.model ?? models.current }).complete!(req);
+    },
+    completeWithTools: (req) => {
+      const pc = config.activeProviderConfig();
+      if (pc.kind === 'openai-compatible' && pc.baseURL) {
+        return new OpenAiCompatibleAdapter({
+          baseURL: pc.baseURL,
+          apiKey: pc.apiKey,
+          model: pc.model ?? models.current,
+          supportsStructuredOutputs: pc.supportsStructuredOutputs,
+        }).completeWithTools!(req);
+      }
+      return new OllamaProvider({ host: pc.baseURL ?? OLLAMA_HOST, model: pc.model ?? models.current }).completeWithTools!(req);
+    },
   };
 
   const agent = new Agent({
@@ -235,9 +263,27 @@ async function cmdRepl(): Promise<void> {
     contextBuilder: new ContextBuilder(),
     resourceManager: new ResourceManager({ maxConcurrent: 4 }),
     toolSearch: new LexicalToolSearch(),
-    budget: { maxTokens: 4096 },
+    budget: { maxTokens: 12_000 },
     maxTools: 8,
   });
+
+  const chatHistory = new ChatHistory(join(ROOT, '.clover', 'chat-history.jsonl'));
+
+  // --resume: continue from the last recorded session (or specified sessionId).
+  let sessionId = randomUUID();
+  let resumedTurns = 0;
+  if (opts.resume) {
+    const targetId = opts.sessionId ?? chatHistory.lastSessionId();
+    if (targetId) {
+      const turns = chatHistory.loadSession(targetId);
+      if (turns.length > 0) {
+        sessionId = targetId as ReturnType<typeof randomUUID>;
+        resumedTurns = turns.length;
+      }
+    }
+  }
+
+  const toolAgent = new ToolCallingAgent(provider, kernel, ROOT, new LexicalToolSearch());
 
   const engine = new ReplEngine({
     theme,
@@ -250,13 +296,28 @@ async function cmdRepl(): Promise<void> {
     models,
     usage,
     workspacePath: ROOT,
+    chatHistory,
+    sessionId,
+    chatProvider: { complete: (req) => provider.complete!(req) },
+    toolAgent,
   });
+
+  // If resuming, pre-load the previous session's turns into the engine.
+  if (opts.resume && resumedTurns > 0) {
+    const targetId = opts.sessionId ?? chatHistory.lastSessionId()!;
+    engine.loadTurns(
+      chatHistory.loadSession(targetId).map((t) => ({ user: t.user, assistant: t.assistant })),
+    );
+  }
 
   const sandbox = new ProcessSandbox();
   let alwaysExec = false;
 
   clearScreen();
   render(engine.banner());
+  if (opts.resume && resumedTurns > 0) {
+    render(theme.dim(`↩  Retomando sessão anterior (${resumedTurns} turno${resumedTurns !== 1 ? 's' : ''} carregados como contexto).`));
+  }
 
   for (;;) {
     const line = (await reader.question(theme.accent(`\n${theme.symbols.clover} > `))).trim();
@@ -414,6 +475,12 @@ async function main(): Promise<void> {
   }
   if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
     cmdHelp();
+    return;
+  }
+  if (cmd === '--resume' || (cmd === undefined && rest.includes('--resume'))) {
+    const sidFlag = rest.find((a) => a.startsWith('--session='));
+    const sessionId = sidFlag ? sidFlag.split('=')[1] : undefined;
+    await cmdRepl({ resume: true, sessionId });
     return;
   }
   await cmdRepl();

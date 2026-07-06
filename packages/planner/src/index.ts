@@ -44,6 +44,8 @@ export interface PlannerOptions {
 export interface PlanOptions {
   /** Contexto estrutural recuperado (AST/KG), já limitado pelo orçamento. */
   contextText?: string;
+  /** Contexto do sistema operacional (caminhos reais: home, Desktop, etc.). */
+  osContext?: string;
 }
 
 export class Planner {
@@ -66,8 +68,8 @@ export class Planner {
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       const prompt =
         attempt === 1
-          ? buildPlannerPrompt(goal.text, tools, contextText)
-          : buildRepairPrompt(goal.text, tools, lastErrors, contextText);
+          ? buildPlannerPrompt(goal.text, tools, contextText, opts.osContext)
+          : buildRepairPrompt(goal.text, tools, lastErrors, contextText, opts.osContext);
 
       const raw = await this.provider.completeStructured({
         system: PLANNER_SYSTEM,
@@ -133,7 +135,7 @@ export function autoRepairPlan(plan: PlanIR): PlanIR {
 
   const repairedOutputs = plan.outputs.length > 0
     ? plan.outputs.map((out) => ids.has(out.nodeId) ? out : { ...out, nodeId: lastId })
-    : [{ kind: 'ref' as const, nodeId: lastId, path: 'message' }];
+    : [{ kind: 'ref' as const, nodeId: lastId, path: '' }];
 
   return { ...plan, outputs: repairedOutputs };
 }

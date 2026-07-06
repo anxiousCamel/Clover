@@ -16,6 +16,7 @@
  * em paralelo como atores isolados (ver testes).
  */
 
+import os from 'node:os';
 import process from 'node:process';
 import type { Goal, RunResult } from '@clover/contracts';
 import { gitCleanTool, gitRestoreTool } from '@clover/tools';
@@ -166,7 +167,7 @@ export class Agent {
     // 2) Planner: gera o Plan IR usando SOMENTE as tools selecionadas, alimentado
     //    pelo contexto estrutural que coube no orçamento (antes do planejamento).
     const contextText = context.selectedMemory.map((m) => m.text).join('\n');
-    const plan = await this.deps.planner.plan(goal, context.tools, { contextText });
+    const plan = await this.deps.planner.plan(goal, context.tools, { contextText, osContext: buildOsContext() });
 
     // 3) Resource Manager governa a execução durável do Scheduler.
     const submitted = await this.deps.resourceManager.run(() =>
@@ -220,19 +221,30 @@ export class Agent {
  * Constrói o system prompt default: info do SO real + limitações conhecidas.
  * Inclui caminhos reais (Home/Desktop) para o LLM não alucinar paths Unix no Windows.
  */
+export function buildOsContext(): string {
+  const osType = process.platform;
+  const homeDir = os.homedir();
+  const sep = osType === 'win32' ? '\\' : '/';
+  const desktopDir = `${homeDir}${sep}Desktop`;
+  const docsDir = `${homeDir}${sep}Documents`;
+  const downloadsDir = `${homeDir}${sep}Downloads`;
+  const lines = [
+    '## Ambiente do Sistema',
+    `- OS: ${osType} (${process.arch})`,
+    `- Home: ${homeDir}`,
+    `- Desktop / Área de Trabalho: ${desktopDir}`,
+    `- Documentos: ${docsDir}`,
+    `- Downloads: ${downloadsDir}`,
+  ];
+  if (osType === 'win32') {
+    lines.push(`- Caminhos Windows usam '\\'. NUNCA use /home/user/... — esse caminho não existe no Windows.`);
+  }
+  return lines.join('\n');
+}
+
 function buildDefaultSystemPrompt(): string {
-  const osType = process.platform; // 'win32' | 'darwin' | 'linux'
-  const homeDir = process.env.USERPROFILE ?? process.env.HOME ?? '/home/user';
-  const desktopDir = osType === 'win32'
-    ? `${homeDir}\\Desktop`
-    : `${homeDir}/Desktop`;
   return [
-    '## Informações do Sistema',
-    `- Sistema Operacional: ${osType} (${process.arch})`,
-    `- Diretório Home: ${homeDir}`,
-    `- Diretório Desktop: ${desktopDir}`,
-    `- Caminhos no Windows usam '\\' (ex.: C:\\Users\\Admin\\Desktop)`,
-    `- Caminhos no Linux/macOS usam '/' (ex.: /home/user/Desktop)`,
+    buildOsContext(),
     '',
     '## Limitações conhecidas do CloverOS',
     '- NÃO possui capacidade de VISÃO/OCR: não analisa imagens, fotos ou screenshots.',
